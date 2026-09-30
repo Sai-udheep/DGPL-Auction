@@ -5,6 +5,7 @@ import CsvUploadModal from "../components/admin/CsvUploadModal";
 import CaptainsModal from "../components/admin/CaptainsModal";
 import RandomDrawModal from "../components/admin/RandomDrawModal";
 import AdminLiveStage from "../components/admin/AdminLiveStage";
+import AdminTeamsModal from "../components/admin/AdminTeamsModal";
 import { API_URL } from "../config";
 import { useAuth } from "../context/authContextCore";
 import { useSocket } from "../context/useSocket";
@@ -22,6 +23,8 @@ import {
   Crown,
   Dices,
   UserCheck,
+  Download,
+  Shield,
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -52,6 +55,8 @@ export default function AdminPage() {
   const [isRandomDrawModalOpen, setIsRandomDrawModalOpen] = useState(false);
   const [drawnPlayer, setDrawnPlayer] = useState(null);
   const [liveStagePlayer, setLiveStagePlayer] = useState(null);
+  const [isTeamsModalOpen, setIsTeamsModalOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   // Descending academic years (4th to 1st)
   const yearOptions = useMemo(
@@ -598,6 +603,88 @@ export default function AdminPage() {
 
   const nonSoldPlayers = players.filter((p) => p.status !== "sold");
 
+  // Export entire tournament rosters to CSV
+  const handleExportCsv = async () => {
+    setExporting(true);
+    setAuctionMessage(null);
+    try {
+      const [pRes, tRes] = await Promise.all([
+        fetch(`${API_URL}/api/v1/players?limit=400`),
+        fetch(`${API_URL}/api/v1/teams`),
+      ]);
+      const pData = await pRes.json();
+      const tData = await tRes.json();
+
+      const allP = pData?.data?.players || [];
+      const allT = tData?.data?.teams || [];
+
+      const teamMap = {};
+      allT.forEach((t) => {
+        teamMap[String(t._id)] = t.name;
+      });
+
+      const rows = [
+        ["Team", "Player Name", "Category", "Year", "Points", "Status"],
+      ];
+
+      // 1. Sold players grouped by team
+      allP
+        .filter((p) => p.status === "sold")
+        .sort((a, b) => {
+          const teamA = teamMap[String(a.team?._id || a.team)] || "Unknown";
+          const teamB = teamMap[String(b.team?._id || b.team)] || "Unknown";
+          return teamA.localeCompare(teamB);
+        })
+        .forEach((p) => {
+          const tName = teamMap[String(p.team?._id || p.team)] || p.teamName || "Assigned Team";
+          const price = p.isCaptain
+            ? "Captain (Retained)"
+            : `${p.finalBidPrice != null ? p.finalBidPrice : "-"} Pts`;
+          rows.push([
+            `"${tName}"`,
+            `"${p.name}"`,
+            `"${p.category || "All-Rounder"}"`,
+            p.year || "1",
+            `"${price}"`,
+            "Sold",
+          ]);
+        });
+
+      // 2. Unsold pool
+      allP
+        .filter((p) => p.status !== "sold")
+        .forEach((p) => {
+          rows.push([
+            `"Unassigned"`,
+            `"${p.name}"`,
+            `"${p.category || "All-Rounder"}"`,
+            p.year || "1",
+            `"0 Pts"`,
+            p.markedUnsold ? "Marked Unsold" : "Available",
+          ]);
+        });
+
+      const csvContent = rows.map((r) => r.join(",")).join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute(
+        "download",
+        `DGPL_Tournament_Rosters_${new Date().toISOString().slice(0, 10)}.csv`
+      );
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setAuctionMessage("Tournament CSV exported successfully!");
+    } catch (err) {
+      setAuctionMessage("Failed to export CSV: " + err.message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // Random player draw logic
   const handleDrawRandomPlayer = () => {
     if (availablePlayers.length === 0 || currentAuctionPlayerId !== null) return;
@@ -675,6 +762,17 @@ export default function AdminPage() {
 
         {/* Action Buttons Row */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* View Teams */}
+          <button
+            onClick={() => setIsTeamsModalOpen(true)}
+            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold text-cyan-300 bg-cyan-500/15 hover:bg-cyan-500/25 border-cyan-500/35 hover:border-cyan-400/60 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-sm"
+            type="button"
+            title="Inspect all 4 team rosters and remaining purses"
+          >
+            <Shield className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+            <span>Teams</span>
+          </button>
+
           {/* Manage Captains */}
           <button
             onClick={() => setIsCaptainsModalOpen(true)}
@@ -684,6 +782,18 @@ export default function AdminPage() {
           >
             <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             <span>Captains</span>
+          </button>
+
+          {/* Export CSV */}
+          <button
+            onClick={handleExportCsv}
+            disabled={exporting}
+            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/35 hover:border-emerald-400/60 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-sm"
+            type="button"
+            title="Export complete tournament teams and rosters as CSV"
+          >
+            <Download className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span>{exporting ? "Exporting..." : "Export CSV"}</span>
           </button>
 
           {/* Upload CSV */}
