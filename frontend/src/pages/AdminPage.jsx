@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+﻿import React, { useState, useEffect, useMemo, useCallback } from "react";
 import YearSelector from "../components/admin/YearSelector";
 import PlayerTable from "../components/admin/PlayerTable";
 import CsvUploadModal from "../components/admin/CsvUploadModal";
@@ -12,6 +12,7 @@ import {
   Radio,
   Upload,
   Trash2,
+  X,
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -48,20 +49,24 @@ export default function AdminPage() {
 
   // Fetch auction status
   useEffect(() => {
+    let ignore = false;
     const fetchStatus = async () => {
       try {
         const res = await fetch(`${API_URL}/api/v1/auction/status`);
         if (res.ok) {
           const data = await res.json();
-          if (data && data.data && typeof data.data.isAuctionActive === "boolean") {
+          if (!ignore && data && data.data && typeof data.data.isAuctionActive === "boolean") {
             setIsAuctionActive(data.data.isAuctionActive);
           }
         }
       } catch {
-        // Fallback to active if offline/unreachable
+        // Fallback
       }
     };
     fetchStatus();
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   // Fetch players for selected year
@@ -272,11 +277,11 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 relative z-10 space-y-8">
-      {/* Page Title */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-8 relative z-10 space-y-6 sm:space-y-8">
+      {/* Page Title & Bulk Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
         <div>
-          <h1 className="text-3xl font-black text-white tracking-wide font-brand">
+          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-wide font-brand">
             Admin Control Center
           </h1>
           <p className="text-xs text-white/50 mt-1">
@@ -285,32 +290,32 @@ export default function AdminPage() {
         </div>
 
         {/* Top Quick Actions */}
-        <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setIsUploadModalOpen(true)}
-            className="glass-btn px-3.5 py-2 text-xs font-bold text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 flex items-center gap-1.5 cursor-pointer shadow-sm"
+            className="glass-btn px-3 py-2 sm:px-3.5 sm:py-2 text-xs font-bold text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 flex items-center gap-1.5 cursor-pointer shadow-sm flex-1 sm:flex-initial justify-center"
             type="button"
           >
-            <Upload className="w-3.5 h-3.5 text-cyan-400" />
+            <Upload className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
             <span>Import CSV / JSON</span>
           </button>
 
           <button
             onClick={() => setIsDeleteAllConfirmOpen(true)}
-            className="glass-btn px-3.5 py-2 text-xs font-bold text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/25 flex items-center gap-1.5 cursor-pointer"
+            className="glass-btn px-3 py-2 sm:px-3.5 sm:py-2 text-xs font-bold text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/25 flex items-center gap-1.5 cursor-pointer flex-1 sm:flex-initial justify-center"
             type="button"
             title="Delete all non-captain players"
           >
-            <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-            <span>Clear Player Pool</span>
+            <Trash2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+            <span>Clear Pool</span>
           </button>
         </div>
       </div>
 
       {/* Master Session Controls Bar */}
-      <div className="glass-card p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-white/12 shadow-xl">
+      <div className="glass-card p-4 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-white/12 shadow-xl">
         <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border shadow-inner ${
+          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border shadow-inner shrink-0 ${
             isAuctionActive
               ? "bg-emerald-500/15 border-emerald-400/30 text-emerald-400"
               : "bg-white/[0.04] border-white/10 text-white/40"
@@ -319,7 +324,7 @@ export default function AdminPage() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${
+              <span className={`w-2 h-2 rounded-full shrink-0 ${
                 isAuctionActive ? "bg-emerald-400 animate-ping" : "bg-white/30"
               }`} />
               <span className={`text-xs font-black uppercase tracking-wider ${
@@ -337,11 +342,11 @@ export default function AdminPage() {
         </div>
 
         {/* Master Action Buttons */}
-        <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap w-full md:w-auto">
           <button
             onClick={handleToggleAuctionStatus}
             disabled={statusToggling}
-            className={`glass-btn px-4 py-2.5 text-xs font-bold flex items-center gap-2 cursor-pointer ${
+            className={`glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer flex-1 sm:flex-initial whitespace-nowrap ${
               isAuctionActive
                 ? "bg-white/[0.08] hover:bg-white/[0.14] text-white border-white/15"
                 : "bg-gradient-to-r from-emerald-500/25 to-teal-500/25 text-emerald-300 border-emerald-400/40 hover:from-emerald-500/35 hover:to-teal-500/35"
@@ -350,12 +355,12 @@ export default function AdminPage() {
           >
             {isAuctionActive ? (
               <>
-                <Pause className="w-3.5 h-3.5 text-amber-400" />
+                <Pause className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span>Pause Session</span>
               </>
             ) : (
               <>
-                <Play className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
+                <Play className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400 shrink-0" />
                 <span>Start Auction Session</span>
               </>
             )}
@@ -363,10 +368,10 @@ export default function AdminPage() {
 
           <button
             onClick={() => setIsResetConfirmOpen(true)}
-            className="glass-btn px-4 py-2.5 text-xs font-bold text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/25 hover:border-rose-500/45 flex items-center gap-2 cursor-pointer"
+            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/25 hover:border-rose-500/45 flex items-center justify-center gap-1.5 cursor-pointer flex-1 sm:flex-initial whitespace-nowrap"
             type="button"
           >
-            <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
+            <RotateCcw className="w-3.5 h-3.5 text-rose-400 shrink-0" />
             <span>Reset Auction</span>
           </button>
         </div>
@@ -392,19 +397,27 @@ export default function AdminPage() {
       )}
 
       {error && (
-        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-semibold">
-          {error}
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-semibold flex items-center justify-between gap-3">
+          <span>{error}</span>
+          <button
+            onClick={() => setError(null)}
+            className="text-rose-300/60 hover:text-white cursor-pointer"
+            type="button"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
       {auctionMessage && (
-        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs font-semibold flex items-center justify-between">
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs font-semibold flex items-center justify-between gap-3">
           <span>{auctionMessage}</span>
           <button
             onClick={() => setAuctionMessage(null)}
-            className="text-amber-200/60 hover:text-amber-100 ml-4 cursor-pointer text-sm font-bold"
+            className="text-amber-200/60 hover:text-white cursor-pointer shrink-0"
+            type="button"
           >
-            &times;
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
@@ -444,9 +457,9 @@ export default function AdminPage() {
       {/* Reset Confirmation Modal */}
       {isResetConfirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="glass-card max-w-md w-full p-6 sm:p-8 space-y-5 border-rose-500/30 bg-[#0e121c]/90 shadow-2xl">
+          <div className="glass-card max-w-md w-full p-6 sm:p-8 space-y-5 border-rose-500/30 bg-[#0e121c]/95 shadow-2xl">
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400">
+              <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 shrink-0">
                 <AlertTriangle className="w-6 h-6" />
               </div>
               <div>
@@ -484,9 +497,9 @@ export default function AdminPage() {
       {/* Clear All Players Confirmation Modal */}
       {isDeleteAllConfirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="glass-card max-w-md w-full p-6 sm:p-8 space-y-5 border-rose-500/30 bg-[#0e121c]/90 shadow-2xl">
+          <div className="glass-card max-w-md w-full p-6 sm:p-8 space-y-5 border-rose-500/30 bg-[#0e121c]/95 shadow-2xl">
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400">
+              <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 shrink-0">
                 <Trash2 className="w-6 h-6" />
               </div>
               <div>
