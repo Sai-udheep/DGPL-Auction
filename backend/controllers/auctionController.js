@@ -5,26 +5,24 @@ const AppConfig = require('../models/appConfigModel');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 
-// 1. GET GLOBAL AUCTION STATUS
-exports.getAuctionStatus = catchAsync(async (req, res, next) => {
+// 1. GET GLOBAL AUCTION STATUS - never throws 500, always returns safe defaults
+exports.getAuctionStatus = async (req, res, _next) => {
   let isAuctionActive = false;
   let currentPlayerId = null;
   try {
-    const cfg = await AppConfig.findOne();
-    if (cfg) {
-      isAuctionActive = !!cfg.isAuctionActive;
-    }
-    const inAuction = await Player.findOne({ status: 'in_auction' }).select('_id');
-    if (inAuction) currentPlayerId = inAuction._id;
-  } catch (err) {
-    console.error('[Auction] Error reading AppConfig in getAuctionStatus:', err);
+    const cfg = await AppConfig.findOne().lean();
+    if (cfg) isAuctionActive = !!cfg.isAuctionActive;
+  } catch (e) {
+    console.error('[Auction] AppConfig read error:', e.message);
   }
-
-  res.status(200).json({
-    status: 'success',
-    data: { isAuctionActive, currentPlayerId },
-  });
-});
+  try {
+    const inAuction = await Player.findOne({ status: 'in_auction' }).select('_id').lean();
+    if (inAuction) currentPlayerId = inAuction._id;
+  } catch (e) {
+    console.error('[Auction] Player in_auction read error:', e.message);
+  }
+  return res.status(200).json({ status: 'success', data: { isAuctionActive, currentPlayerId } });
+};
 
 // 2. TOGGLE / SET GLOBAL AUCTION STATUS (Start/Pause Session)
 exports.setAuctionStatus = catchAsync(async (req, res, next) => {
@@ -343,15 +341,15 @@ exports.resetAuction = catchAsync(async (req, res, next) => {
     );
 
     // 3. Reset all teams: budget to 100 and players array to only captain
-    const allTeams = await Team.find();
-    for (const team of allTeams) {
-      const captainPlayer = team.captain ? [team.captain] : [];
-      await Team.findByIdAndUpdate(team._id, {
-        $set: {
-          budget: 100,
-          players: captainPlayer,
-        },
-      });
+    // Use Team.collection.updateOne to bypass the pre-findOneAndUpdate middleware
+    // which conflicts with $set.players
+    const allTeams = await Team.find().lean();
+    for (const t of allTeams) {
+      const captainPlayers = t.captain ? [t.captain] : [];
+      await Team.collection.updateOne(
+        { _id: t._id },
+        { $set: { budget: 100, players: captainPlayers } }
+      );
     }
 
     // 4. Update AppConfig status to inactive

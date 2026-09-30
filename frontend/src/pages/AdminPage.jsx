@@ -284,6 +284,11 @@ export default function AdminPage() {
         throw new Error(errData.message || "Failed to delete player");
       }
       setPlayers((prev) => prev.filter((p) => p._id !== playerId));
+      // If deleted player was the one in auction, clear auction state
+      if (String(currentAuctionPlayerId) === String(playerId)) {
+        setCurrentAuctionPlayerId(null);
+        setIsAuctionActive(false);
+      }
       setAuctionMessage("Player deleted successfully.");
     } catch (err) {
       setAuctionMessage(err.message || "Failed to delete player");
