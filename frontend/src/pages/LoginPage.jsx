@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+﻿import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/authContextCore";
 import { ArrowLeft, Lock, Mail, ShieldAlert } from "lucide-react";
@@ -9,7 +9,18 @@ const LoginPage = () => {
   const [password, setPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState(null);
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, isAuthenticated, user } = useAuth();
+
+  // If user is already authenticated and lands on login page, redirect them
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      if (user.role === "admin") {
+        navigate("/admin", { replace: true });
+      } else {
+        navigate("/", { replace: true });
+      }
+    }
+  }, [isAuthenticated, user, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
