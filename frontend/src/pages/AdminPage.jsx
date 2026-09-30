@@ -4,6 +4,7 @@ import PlayerTable from "../components/admin/PlayerTable";
 import CsvUploadModal from "../components/admin/CsvUploadModal";
 import { API_URL } from "../config";
 import { useAuth } from "../context/authContextCore";
+import { useSocket } from "../context/useSocket";
 import {
   RotateCcw,
   Play,
@@ -17,6 +18,7 @@ import {
 
 export default function AdminPage() {
   const { token } = useAuth();
+  const { socket, isConnected } = useSocket();
   const [players, setPlayers] = useState([]);
   const [selectedYear, setSelectedYear] = useState(4); // Default to 4th year
   const [loading, setLoading] = useState(false);
@@ -47,7 +49,26 @@ export default function AdminPage() {
     []
   );
 
-  // Fetch auction status
+  // Fetch players for selected year
+  const fetchPlayers = useCallback(async () => {
+    if (selectedYear == null) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/v1/players?year=${selectedYear}&limit=100`
+      );
+      if (!res.ok) throw new Error("Failed to load players");
+      const data = await res.json();
+      setPlayers(data?.data?.players || []);
+    } catch (err) {
+      setError(err.message || "Failed to load players");
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedYear]);
+
+  // Fetch initial auction status
   useEffect(() => {
     let ignore = false;
     const fetchStatus = async () => {
@@ -69,24 +90,29 @@ export default function AdminPage() {
     };
   }, []);
 
-  // Fetch players for selected year
-  const fetchPlayers = useCallback(async () => {
-    if (selectedYear == null) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(
-        `${API_URL}/api/v1/players?year=${selectedYear}&limit=100`
-      );
-      if (!res.ok) throw new Error("Failed to load players");
-      const data = await res.json();
-      setPlayers(data?.data?.players || []);
-    } catch (err) {
-      setError(err.message || "Failed to load players");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedYear]);
+  // Real-time socket sync for status & reset events
+  useEffect(() => {
+    if (!socket || !isConnected) return;
+
+    const handleStatusChanged = (payload) => {
+      if (payload && typeof payload.isAuctionActive === "boolean") {
+        setIsAuctionActive(payload.isAuctionActive);
+      }
+    };
+
+    const handleReset = () => {
+      setIsAuctionActive(false);
+      fetchPlayers();
+    };
+
+    socket.on("server:auction_status_changed", handleStatusChanged);
+    socket.on("server:auction_reset", handleReset);
+
+    return () => {
+      socket.off("server:auction_status_changed", handleStatusChanged);
+      socket.off("server:auction_reset", handleReset);
+    };
+  }, [socket, isConnected, fetchPlayers]);
 
   useEffect(() => {
     fetchPlayers();
@@ -137,6 +163,7 @@ export default function AdminPage() {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.message || "Failed to reset auction");
       }
+      setIsAuctionActive(false);
       setAuctionMessage("Auction successfully reset! All non-captain players unsold, rosters cleared, budgets restored to 100 Pts.");
       setIsResetConfirmOpen(false);
       fetchPlayers();
@@ -207,6 +234,7 @@ export default function AdminPage() {
         body: JSON.stringify({ playerId }),
       });
       if (!res.ok) throw new Error(await res.text());
+      setIsAuctionActive(true);
       setAuctionMessage("Player is now in auction!");
       setPlayers((prev) =>
         prev.map((p) => (p._id === playerId ? { ...p, status: "in_auction" } : p))
