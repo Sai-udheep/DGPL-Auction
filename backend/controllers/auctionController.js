@@ -1,9 +1,99 @@
-const mongoose = require('mongoose');
+﻿const mongoose = require('mongoose');
 const Player = require('../models/playerModel');
 const Team = require('../models/teamModel');
+const AppConfig = require('../models/appConfigModel');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 
+// GET GLOBAL AUCTION STATUS
+exports.getAuctionStatus = catchAsync(async (req, res, next) => {
+  let cfg = await AppConfig.findOne();
+  if (!cfg) {
+    cfg = await AppConfig.create({ isAuctionActive: false });
+  }
+  res.status(200).json({
+    status: 'success',
+    data: { isAuctionActive: !!cfg.isAuctionActive },
+  });
+});
+
+// TOGGLE / SET GLOBAL AUCTION STATUS (Start/Pause live session)
+exports.setAuctionStatus = catchAsync(async (req, res, next) => {
+  const { isAuctionActive } = req.body;
+  if (typeof isAuctionActive !== 'boolean') {
+    return next(new AppError('isAuctionActive boolean is required', 400));
+  }
+
+  let cfg = await AppConfig.findOne();
+  if (!cfg) {
+    cfg = await AppConfig.create({ isAuctionActive });
+  } else {
+    cfg.isAuctionActive = isAuctionActive;
+    await cfg.save();
+  }
+
+  if (req.io) {
+    console.log('[Auction] Emitting server:auction_status_changed', isAuctionActive);
+    req.io.emit('server:auction_status_changed', { isAuctionActive });
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: { isAuctionActive: cfg.isAuctionActive },
+  });
+});
+
+// RESET ENTIRE AUCTION
+exports.resetAuction = catchAsync(async (req, res, next) => {
+  // 1. Reset non-captain players to unsold with clean bidHistory
+  await Player.updateMany(
+    { isCaptain: { $ne: true } },
+    {
+      $set: {
+        status: 'unsold',
+        team: null,
+        finalBidPrice: null,
+        bidHistory: [],
+      },
+    }
+  );
+
+  // 2. Clear in_auction state on any captain (if any)
+  await Player.updateMany(
+    { isCaptain: true, status: 'in_auction' },
+    { $set: { status: 'sold' } }
+  );
+
+  // 3. Reset teams: budget to 100 and players array to only captain
+  const allTeams = await Team.find();
+  for (const team of allTeams) {
+    const captainPlayer = team.captain ? [team.captain] : [];
+    team.budget = 100;
+    team.players = captainPlayer;
+    await team.save();
+  }
+
+  // 4. Update AppConfig status to inactive
+  let cfg = await AppConfig.findOne();
+  if (cfg) {
+    cfg.isAuctionActive = false;
+    await cfg.save();
+  }
+
+  // 5. Broadcast reset event to all connected clients
+  if (req.io) {
+    console.log('[Auction] Emitting server:auction_reset');
+    req.io.emit('server:auction_reset', { message: 'Auction has been reset' });
+    req.io.emit('server:auction_status_changed', { isAuctionActive: false });
+  }
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Auction reset successfully. All players and team budgets have been restored.',
+  });
+});
+
+// START AUCTION FOR A SPECIFIC PLAYER
 exports.startAuction = catchAsync(async (req, res, next) => {
   const { playerId } = req.body;
   if (!playerId) {
@@ -13,11 +103,20 @@ exports.startAuction = catchAsync(async (req, res, next) => {
   if (!player) {
     return next(new AppError('Player not found', 404));
   }
-  // Update status if not already in auction or sold
   if (player.status === 'sold') {
     return next(new AppError('Player already sold', 400));
   }
-  // Ensure only one player is marked in_auction at a time
+
+  // Ensure global session is active when a player is started
+  let cfg = await AppConfig.findOne();
+  if (cfg && !cfg.isAuctionActive) {
+    cfg.isAuctionActive = true;
+    await cfg.save();
+    if (req.io) {
+      req.io.emit('server:auction_status_changed', { isAuctionActive: true });
+    }
+  }
+
   await Player.updateMany(
     { status: 'in_auction' },
     { $set: { status: 'unsold' } }
@@ -25,15 +124,12 @@ exports.startAuction = catchAsync(async (req, res, next) => {
   player.status = 'in_auction';
   await player.save();
 
-  // Re-fetch populated for consistent client payload (team & bidHistory team names)
   const populated = await Player.findById(player._id)
     .populate({ path: 'bidHistory.team', select: 'name' })
     .populate({ path: 'team', select: 'name' });
 
-  // Emit socket event to all connected clients (emit lean plain object)
   if (req.io) {
     const plain = populated.toObject({ getters: true, virtuals: false });
-    // Attach teamName to each bid item for frontend convenience
     if (Array.isArray(plain.bidHistory)) {
       plain.bidHistory = plain.bidHistory.map((b) => ({
         ...b,
@@ -72,8 +168,7 @@ exports.getCurrentAuctionPlayer = catchAsync(async (req, res, next) => {
   });
 });
 
-// Sell the current in-auction player (prefers transaction; falls back if unavailable).
-// Expected body: { playerId, teamId, finalBid } (backward compatible: finalBidPrice)
+// SELL PLAYER
 exports.sellPlayer = catchAsync(async (req, res, next) => {
   const { playerId, teamId } = req.body;
   const finalBid =
@@ -89,10 +184,8 @@ exports.sellPlayer = catchAsync(async (req, res, next) => {
 
   let updatedPlayer;
   let updatedTeam;
-  // Try transactional path first
   let usedFallback = false;
   try {
-    // If not connected, skip transaction path quickly
     if (mongoose.connection.readyState !== 1) throw new Error('NO_DB');
     const session = await mongoose.startSession();
     try {
@@ -109,7 +202,6 @@ exports.sellPlayer = catchAsync(async (req, res, next) => {
         if (team.budget != null && team.budget < finalBid)
           throw new AppError('Team does not have enough budget', 400);
 
-        // Update player
         updatedPlayer = await Player.findByIdAndUpdate(
           playerId,
           {
@@ -122,7 +214,6 @@ exports.sellPlayer = catchAsync(async (req, res, next) => {
           { new: true, session }
         );
 
-        // Update team atomically
         updatedTeam = await Team.findByIdAndUpdate(
           teamId,
           {
@@ -142,9 +233,7 @@ exports.sellPlayer = catchAsync(async (req, res, next) => {
       await session.endSession();
     }
   } catch (err) {
-    // Fallback path without transactions (e.g., standalone DB or connection lag)
     usedFallback = true;
-    // Validate preconditions first (non-transactional)
     const player = await Player.findById(playerId);
     if (!player) return next(new AppError('Player not found', 404));
     if (player.status === 'sold')
@@ -152,7 +241,6 @@ exports.sellPlayer = catchAsync(async (req, res, next) => {
     if (player.status !== 'in_auction')
       return next(new AppError('Player is not currently in auction', 400));
 
-    // Atomically decrement budget only if sufficient, and add player
     updatedTeam = await Team.findOneAndUpdate(
       {
         _id: teamId,
@@ -170,7 +258,6 @@ exports.sellPlayer = catchAsync(async (req, res, next) => {
       return next(new AppError('Team not found or insufficient budget', 400));
     }
 
-    // Now atomically flip player to sold only if still in_auction
     updatedPlayer = await Player.findOneAndUpdate(
       { _id: playerId, status: 'in_auction' },
       {
@@ -183,7 +270,6 @@ exports.sellPlayer = catchAsync(async (req, res, next) => {
       { new: true }
     );
 
-    // Compensation if player update failed (e.g., race): revert team changes
     if (!updatedPlayer) {
       await Team.findByIdAndUpdate(updatedTeam._id, {
         $pull: { players: playerId },
@@ -193,7 +279,6 @@ exports.sellPlayer = catchAsync(async (req, res, next) => {
     }
   }
 
-  // Populate player for broadcast
   const populatedPlayer = await Player.findById(updatedPlayer._id)
     .populate({ path: 'bidHistory.team', select: 'name' })
     .populate({ path: 'team', select: 'name budget' });
@@ -238,7 +323,7 @@ exports.sellPlayer = catchAsync(async (req, res, next) => {
   });
 });
 
-// Mark the current in-auction player as unsold (did not receive any bids)
+// MARK PLAYER UNSOLD
 exports.markPlayerUnsold = catchAsync(async (req, res, next) => {
   const { playerId } = req.body;
   if (!playerId) return next(new AppError('playerId is required', 400));
@@ -248,7 +333,6 @@ exports.markPlayerUnsold = catchAsync(async (req, res, next) => {
   if (player.status !== 'in_auction') {
     return next(new AppError('Player is not currently in auction', 400));
   }
-  // Do not allow marking unsold if any bids exist
   if (Array.isArray(player.bidHistory) && player.bidHistory.length > 0) {
     return next(new AppError('Cannot mark unsold: bids already placed', 400));
   }
