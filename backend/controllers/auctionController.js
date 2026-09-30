@@ -7,13 +7,19 @@ const AppError = require('../utils/appError');
 
 // GET GLOBAL AUCTION STATUS
 exports.getAuctionStatus = catchAsync(async (req, res, next) => {
-  let cfg = await AppConfig.findOne();
-  if (!cfg) {
-    cfg = await AppConfig.create({ isAuctionActive: false });
+  let isAuctionActive = false;
+  try {
+    const cfg = await AppConfig.findOne();
+    if (cfg) {
+      isAuctionActive = !!cfg.isAuctionActive;
+    }
+  } catch (err) {
+    console.error('[Auction] Error reading AppConfig in getAuctionStatus:', err);
   }
+
   res.status(200).json({
     status: 'success',
-    data: { isAuctionActive: !!cfg.isAuctionActive },
+    data: { isAuctionActive },
   });
 });
 
@@ -24,12 +30,14 @@ exports.setAuctionStatus = catchAsync(async (req, res, next) => {
     return next(new AppError('isAuctionActive boolean is required', 400));
   }
 
-  let cfg = await AppConfig.findOne();
-  if (!cfg) {
-    cfg = await AppConfig.create({ isAuctionActive });
-  } else {
-    cfg.isAuctionActive = isAuctionActive;
-    await cfg.save();
+  try {
+    await AppConfig.findOneAndUpdate(
+      {},
+      { $set: { isAuctionActive } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+  } catch (err) {
+    console.error('[Auction] Error updating AppConfig in setAuctionStatus:', err);
   }
 
   if (req.io) {
@@ -39,45 +47,53 @@ exports.setAuctionStatus = catchAsync(async (req, res, next) => {
 
   res.status(200).json({
     status: 'success',
-    data: { isAuctionActive: cfg.isAuctionActive },
+    data: { isAuctionActive },
   });
 });
 
 // RESET ENTIRE AUCTION
 exports.resetAuction = catchAsync(async (req, res, next) => {
-  // 1. Reset non-captain players to unsold with clean bidHistory
-  await Player.updateMany(
-    { isCaptain: { $ne: true } },
-    {
-      $set: {
-        status: 'unsold',
-        team: null,
-        finalBidPrice: null,
-        bidHistory: [],
-      },
+  try {
+    // 1. Reset non-captain players to unsold with clean bidHistory
+    await Player.updateMany(
+      { isCaptain: { $ne: true } },
+      {
+        $set: {
+          status: 'unsold',
+          team: null,
+          finalBidPrice: null,
+          bidHistory: [],
+        },
+      }
+    );
+
+    // 2. Clear in_auction state on any captain (if any)
+    await Player.updateMany(
+      { isCaptain: true, status: 'in_auction' },
+      { $set: { status: 'sold' } }
+    );
+
+    // 3. Reset teams: budget to 100 and players array to only captain
+    const allTeams = await Team.find();
+    for (const team of allTeams) {
+      const captainPlayer = team.captain ? [team.captain] : [];
+      await Team.findByIdAndUpdate(team._id, {
+        $set: {
+          budget: 100,
+          players: captainPlayer,
+        },
+      });
     }
-  );
 
-  // 2. Clear in_auction state on any captain (if any)
-  await Player.updateMany(
-    { isCaptain: true, status: 'in_auction' },
-    { $set: { status: 'sold' } }
-  );
-
-  // 3. Reset teams: budget to 100 and players array to only captain
-  const allTeams = await Team.find();
-  for (const team of allTeams) {
-    const captainPlayer = team.captain ? [team.captain] : [];
-    team.budget = 100;
-    team.players = captainPlayer;
-    await team.save();
-  }
-
-  // 4. Update AppConfig status to inactive
-  let cfg = await AppConfig.findOne();
-  if (cfg) {
-    cfg.isAuctionActive = false;
-    await cfg.save();
+    // 4. Update AppConfig status to inactive
+    await AppConfig.findOneAndUpdate(
+      {},
+      { $set: { isAuctionActive: false } },
+      { upsert: true }
+    );
+  } catch (err) {
+    console.error('[Auction] Reset error:', err);
+    return next(new AppError('Failed to reset auction: ' + err.message, 500));
   }
 
   // 5. Broadcast reset event to all connected clients
@@ -89,32 +105,33 @@ exports.resetAuction = catchAsync(async (req, res, next) => {
 
   res.status(200).json({
     status: 'success',
-    message: 'Auction reset successfully. All players and team budgets have been restored.',
+    message: 'Auction reset successfully',
   });
 });
 
-// START AUCTION FOR A SPECIFIC PLAYER
+// START AUCTION FOR A PLAYER
 exports.startAuction = catchAsync(async (req, res, next) => {
   const { playerId } = req.body;
-  if (!playerId) {
-    return next(new AppError('playerId is required', 400));
-  }
+  if (!playerId) return next(new AppError('playerId is required', 400));
+
   const player = await Player.findById(playerId);
-  if (!player) {
-    return next(new AppError('Player not found', 404));
-  }
+  if (!player) return next(new AppError('Player not found', 404));
   if (player.status === 'sold') {
     return next(new AppError('Player already sold', 400));
   }
 
   // Ensure global session is active when a player is started
-  let cfg = await AppConfig.findOne();
-  if (cfg && !cfg.isAuctionActive) {
-    cfg.isAuctionActive = true;
-    await cfg.save();
+  try {
+    await AppConfig.findOneAndUpdate(
+      {},
+      { $set: { isAuctionActive: true } },
+      { upsert: true }
+    );
     if (req.io) {
       req.io.emit('server:auction_status_changed', { isAuctionActive: true });
     }
+  } catch (err) {
+    console.error('[Auction] Error updating AppConfig in startAuction:', err);
   }
 
   await Player.updateMany(
