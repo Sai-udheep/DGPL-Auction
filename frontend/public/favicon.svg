@@ -1,0 +1,56 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0e121c"/>
+      <stop offset="50%" stop-color="#06070a"/>
+      <stop offset="100%" stop-color="#141926"/>
+    </linearGradient>
+
+    <!-- Amber Glow Gradient -->
+    <linearGradient id="amberGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="50%" stop-color="#ea763f"/>
+      <stop offset="100%" stop-color="#f97316"/>
+    </linearGradient>
+
+    <!-- Cyan Accent Gradient -->
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+
+    <!-- Outer Glow Filter -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="16" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Dark Obsidian Squircle Canvas -->
+  <rect x="24" y="24" width="464" height="464" rx="128" fill="url(#bgGrad)" stroke="rgba(255,255,255,0.12)" stroke-width="8"/>
+  
+  <!-- Subtle Inner Specular Light -->
+  <rect x="32" y="32" width="448" height="448" rx="120" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="2"/>
+
+  <!-- Glowing Aura Accent -->
+  <circle cx="256" cy="256" r="140" fill="url(#amberGlow)" opacity="0.18" filter="url(#glow)"/>
+
+  <!-- Stylized Gavel / Bidding Arena Icon -->
+  <g transform="translate(136, 136) scale(0.94)" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Gavel Head (Slanted 45 deg) -->
+    <rect x="156" y="36" width="68" height="136" rx="20" transform="rotate(45 190 104)" fill="url(#amberGlow)" stroke="#ffffff" stroke-width="6" filter="url(#glow)"/>
+    
+    <!-- Gavel Handle -->
+    <path d="M 120 174 L 38 256" stroke="url(#cyanGrad)" stroke-width="24" stroke-linecap="round"/>
+    
+    <!-- Sound Base / Block -->
+    <rect x="18" y="248" width="130" height="28" rx="14" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.25)" stroke-width="4"/>
+    <line x1="8" y1="276" x2="158" y2="276" stroke="url(#amberGlow)" stroke-width="8"/>
+
+    <!-- Sparks / Radiating Live Energy -->
+    <circle cx="218" cy="46" r="8" fill="#fbbf24"/>
+    <circle cx="258" cy="92" r="6" fill="#38bdf8"/>
+    <circle cx="178" cy="18" r="5" fill="#34d399"/>
+  </g>
+</svg>
