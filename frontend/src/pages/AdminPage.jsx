@@ -1,241 +1,123 @@
-﻿import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect, useMemo, useCallback } from "react";
 import YearSelector from "../components/admin/YearSelector";
 import PlayerTable from "../components/admin/PlayerTable";
-import { useSocket } from "../context/useSocket";
-import { useAuth } from "../context/authContextCore";
+import CsvUploadModal from "../components/admin/CsvUploadModal";
 import { API_URL } from "../config";
-import { Radio, Play, Pause, RotateCcw, AlertTriangle, X, Check } from "lucide-react";
-
-const yearOptions = [
-  { value: "4", label: "4th Year" },
-  { value: "3", label: "3rd Year" },
-  { value: "2", label: "2nd Year" },
-  { value: "1", label: "1st Year" },
-];
+import { useAuth } from "../context/authContextCore";
+import {
+  RotateCcw,
+  Play,
+  Pause,
+  AlertTriangle,
+  Radio,
+  Upload,
+  Trash2,
+} from "lucide-react";
 
 export default function AdminPage() {
-  const [selectedYear, setSelectedYear] = useState(null);
+  const { token } = useAuth();
   const [players, setPlayers] = useState([]);
+  const [selectedYear, setSelectedYear] = useState(4); // Default to 4th year
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [actionLoadingId, setActionLoadingId] = useState(null);
   const [auctionMessage, setAuctionMessage] = useState(null);
-  const [isAuctionActive, setIsAuctionActive] = useState(false);
+  const [actionLoadingId, setActionLoadingId] = useState(null);
+  const [deletingPlayerId, setDeletingPlayerId] = useState(null);
+
+  // Master auction session state
+  const [isAuctionActive, setIsAuctionActive] = useState(true);
   const [statusToggling, setStatusToggling] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
 
-  const { socket } = useSocket();
-  const { token } = useAuth();
+  // Bulk Player & CSV Modals
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isDeleteAllConfirmOpen, setIsDeleteAllConfirmOpen] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
-  // Load global auction status on mount
+  // Descending academic years (4th to 1st)
+  const yearOptions = useMemo(
+    () => [
+      { label: "4th Year", value: 4 },
+      { label: "3rd Year", value: 3 },
+      { label: "2nd Year", value: 2 },
+      { label: "1st Year", value: 1 },
+    ],
+    []
+  );
+
+  // Fetch auction status
   useEffect(() => {
-    let ignore = false;
-    const loadStatus = async () => {
+    const fetchStatus = async () => {
       try {
         const res = await fetch(`${API_URL}/api/v1/auction/status`);
         if (res.ok) {
           const data = await res.json();
-          if (!ignore && typeof data?.data?.isAuctionActive === "boolean") {
+          if (data && data.data && typeof data.data.isAuctionActive === "boolean") {
             setIsAuctionActive(data.data.isAuctionActive);
           }
         }
       } catch {
-        /* ignore */
+        // Fallback to active if offline/unreachable
       }
     };
-    loadStatus();
-    return () => {
-      ignore = true;
-    };
+    fetchStatus();
   }, []);
 
   // Fetch players for selected year
-  useEffect(() => {
+  const fetchPlayers = useCallback(async () => {
     if (selectedYear == null) return;
-    let isCancelled = false;
-    const fetchPlayersByYear = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch(
-          `${API_URL}/api/v1/players?year=${selectedYear}`,
-          {
-            headers: {
-              "Content-Type": "application/json",
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-          }
-        );
-        if (!res.ok) throw new Error("Failed to load players");
-        const data = await res.json();
-        if (!isCancelled) {
-          setPlayers(data.data?.players || []);
-        }
-      } catch (err) {
-        if (!isCancelled) setError(err.message);
-      } finally {
-        if (!isCancelled) setLoading(false);
-      }
-    };
-    fetchPlayersByYear();
-    return () => {
-      isCancelled = true;
-    };
-  }, [selectedYear, token]);
-
-  // Socket event listeners
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleAuctionStatusChanged = (payload) => {
-      setIsAuctionActive(!!payload?.isAuctionActive);
-    };
-
-    const handleAuctionReset = () => {
-      setIsAuctionActive(false);
-      refreshYearPlayers();
-      setAuctionMessage("Auction has been reset. All rosters and budgets restored.");
-    };
-
-    const handleNewBid = (payload) => {
-      setPlayers((prev) => {
-        return prev.map((p) => {
-          if (p._id !== payload.playerId) return p;
-          let bidHistory = payload.player?.bidHistory;
-          if (!bidHistory && payload.latestBid) {
-            const lb = payload.latestBid;
-            const entry = {
-              _id: lb.timestamp || Date.now(),
-              team: lb.teamId,
-              teamName: lb.teamName,
-              bidAmount: lb.bidAmount,
-              timestamp: lb.timestamp || Date.now(),
-            };
-            bidHistory = [...(p.bidHistory || []), entry];
-          }
-          return {
-            ...p,
-            bidHistory: bidHistory || p.bidHistory,
-            finalBidPrice: payload.finalBidPrice ?? p.finalBidPrice,
-            team: payload.leadingTeam?.id || p.team,
-            teamName: payload.leadingTeam?.name || p.teamName,
-            status: "in_auction",
-          };
-        });
-      });
-    };
-
-    const handleNewPlayer = (player) => {
-      setPlayers((prev) =>
-        prev.map((p) => ({
-          ...p,
-          status:
-            p._id === player._id
-              ? "in_auction"
-              : p.status === "in_auction"
-              ? "unsold"
-              : p.status,
-        }))
-      );
-    };
-
-    const handlePlayerSold = (payload) => {
-      const soldPlayer = payload?.player || payload;
-      if (!soldPlayer?._id) return;
-      setPlayers((prev) =>
-        prev.map((p) =>
-          p._id === soldPlayer._id
-            ? {
-                ...p,
-                status: "sold",
-                finalBidPrice: soldPlayer.finalBidPrice ?? p.finalBidPrice,
-                team: soldPlayer.team?._id || soldPlayer.team || p.team,
-                teamName:
-                  soldPlayer.team?.name || soldPlayer.teamName || p.teamName,
-              }
-            : p
-        )
-      );
-    };
-
-    const handlePlayerUnsold = (player) => {
-      if (!player?._id) return;
-      setPlayers((prev) =>
-        prev.map((p) => (p._id === player._id ? { ...p, status: "unsold" } : p))
-      );
-    };
-
-    socket.on("server:auction_status_changed", handleAuctionStatusChanged);
-    socket.on("server:auction_reset", handleAuctionReset);
-    socket.on("server:new_bid", handleNewBid);
-    socket.on("new_player", handleNewPlayer);
-    socket.on("server:player_sold", handlePlayerSold);
-    socket.on("player_unsold", handlePlayerUnsold);
-    socket.on("server:player_unsold", handlePlayerUnsold);
-
-    return () => {
-      socket.off("server:auction_status_changed", handleAuctionStatusChanged);
-      socket.off("server:auction_reset", handleAuctionReset);
-      socket.off("server:new_bid", handleNewBid);
-      socket.off("new_player", handleNewPlayer);
-      socket.off("server:player_sold", handlePlayerSold);
-      socket.off("player_unsold", handlePlayerUnsold);
-      socket.off("server:player_unsold", handlePlayerUnsold);
-    };
-  }, [socket]);
-
-  const refreshYearPlayers = async () => {
-    if (selectedYear == null) return;
+    setLoading(true);
+    setError(null);
     try {
       const res = await fetch(
-        `${API_URL}/api/v1/players?year=${selectedYear}`,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-        }
+        `${API_URL}/api/v1/players?year=${selectedYear}&limit=100`
       );
-      if (res.ok) {
-        const data = await res.json();
-        setPlayers(data.data?.players || []);
-      }
-    } catch {
-      /* ignore */
+      if (!res.ok) throw new Error("Failed to load players");
+      const data = await res.json();
+      setPlayers(data?.data?.players || []);
+    } catch (err) {
+      setError(err.message || "Failed to load players");
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [selectedYear]);
 
+  useEffect(() => {
+    fetchPlayers();
+  }, [fetchPlayers]);
+
+  // Toggle Auction Session Active / Inactive
   const handleToggleAuctionStatus = async () => {
-    if (!token) return;
     setStatusToggling(true);
     setAuctionMessage(null);
+    const nextStatus = !isAuctionActive;
     try {
-      const nextState = !isAuctionActive;
       const res = await fetch(`${API_URL}/api/v1/auction/status`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ isAuctionActive: nextState }),
+        body: JSON.stringify({ isAuctionActive: nextStatus }),
       });
       if (!res.ok) throw new Error("Failed to update auction status");
-      setIsAuctionActive(nextState);
+      const data = await res.json();
+      setIsAuctionActive(data.data.isAuctionActive);
       setAuctionMessage(
-        nextState
-          ? "Auction session is now LIVE and accepting bids."
-          : "Auction session has been PAUSED."
+        nextStatus
+          ? "Auction session started! Viewers can now see live bidding stage."
+          : "Auction session paused. Viewers will see waiting stage."
       );
     } catch (err) {
-      setAuctionMessage(err.message);
+      setAuctionMessage(err.message || "Failed to update auction status");
     } finally {
       setStatusToggling(false);
     }
   };
 
+  // Reset entire tournament
   const handleResetAuction = async () => {
-    if (!token) return;
     setResetting(true);
     setAuctionMessage(null);
     try {
@@ -246,25 +128,70 @@ export default function AdminPage() {
           Authorization: `Bearer ${token}`,
         },
       });
-      if (!res.ok) throw new Error("Failed to reset auction");
-      setIsAuctionActive(false);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to reset auction");
+      }
+      setAuctionMessage("Auction successfully reset! All non-captain players unsold, rosters cleared, budgets restored to 100 Pts.");
       setIsResetConfirmOpen(false);
-      setAuctionMessage("Auction successfully reset! All non-captain players are unsold and budgets set to 100 Pts.");
-      await refreshYearPlayers();
+      fetchPlayers();
     } catch (err) {
-      setAuctionMessage(err.message);
+      setAuctionMessage(err.message || "Failed to reset auction");
     } finally {
       setResetting(false);
     }
   };
 
-  const handleStartAuction = async (playerId) => {
-    if (!token) {
-      setAuctionMessage("You must be signed in as admin to start auctions.");
-      return;
-    }
+  // Delete individual player
+  const handleDeletePlayer = async (playerId) => {
+    setDeletingPlayerId(playerId);
     setAuctionMessage(null);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/players/${playerId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) throw new Error("Failed to delete player");
+      setPlayers((prev) => prev.filter((p) => p._id !== playerId));
+      setAuctionMessage("Player deleted successfully.");
+    } catch (err) {
+      setAuctionMessage(err.message || "Failed to delete player");
+    } finally {
+      setDeletingPlayerId(null);
+    }
+  };
+
+  // Delete all non-captain players (bulk wipe)
+  const handleDeleteAllPlayers = async () => {
+    setDeletingAll(true);
+    setAuctionMessage(null);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/players/delete-all`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to delete all players");
+      }
+      const data = await res.json();
+      setAuctionMessage(data.message || "All non-captain players deleted and team rosters cleared.");
+      setIsDeleteAllConfirmOpen(false);
+      fetchPlayers();
+    } catch (err) {
+      setAuctionMessage(err.message || "Failed to clear players");
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
+  const handleStartAuction = async (playerId) => {
     setActionLoadingId(playerId);
+    setAuctionMessage(null);
     try {
       const res = await fetch(`${API_URL}/api/v1/auction/start`, {
         method: "POST",
@@ -274,37 +201,19 @@ export default function AdminPage() {
         },
         body: JSON.stringify({ playerId }),
       });
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(txt || "Failed to start auction");
-      }
-      setIsAuctionActive(true);
-      setAuctionMessage("Auction started for selected player.");
-      await refreshYearPlayers();
+      if (!res.ok) throw new Error(await res.text());
+      setAuctionMessage("Player is now in auction!");
+      setPlayers((prev) =>
+        prev.map((p) => (p._id === playerId ? { ...p, status: "in_auction" } : p))
+      );
     } catch (err) {
-      setAuctionMessage(err.message);
+      setAuctionMessage(err.message || "Failed to start auction for player");
     } finally {
       setActionLoadingId(null);
     }
   };
 
   const handleSellPlayer = async (playerId) => {
-    const player = players.find((p) => p._id === playerId);
-    if (!player) return;
-    let winningTeamId = null;
-    let finalBidPrice = null;
-    if (player.bidHistory && player.bidHistory.length) {
-      const last = player.bidHistory[player.bidHistory.length - 1];
-      winningTeamId = (last.team && last.team._id) || last.team || player.team;
-      finalBidPrice = last.bidAmount;
-    } else {
-      winningTeamId = player.team;
-      finalBidPrice = player.finalBidPrice || player.basePrice || 0;
-    }
-    if (!winningTeamId) {
-      setAuctionMessage("No winning team determined (no bids and no team).");
-      return;
-    }
     setActionLoadingId(playerId);
     setAuctionMessage(null);
     try {
@@ -314,21 +223,18 @@ export default function AdminPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          playerId,
-          teamId: winningTeamId,
-          finalBid: finalBidPrice,
-        }),
+        body: JSON.stringify({ playerId }),
       });
       if (!res.ok) throw new Error(await res.text());
-      setAuctionMessage("Player sold successfully.");
+      const resData = await res.json();
+      const winningTeamId = resData?.data?.player?.team;
+      setAuctionMessage("Player successfully sold!");
       setPlayers((prev) =>
         prev.map((p) =>
           p._id === playerId
             ? {
                 ...p,
                 status: "sold",
-                finalBidPrice: finalBidPrice,
                 team: winningTeamId,
               }
             : p
@@ -368,13 +274,37 @@ export default function AdminPage() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 relative z-10 space-y-8">
       {/* Page Title */}
-      <div>
-        <h1 className="text-3xl font-black text-white tracking-wide font-brand">
-          Admin Control Center
-        </h1>
-        <p className="text-xs text-white/50 mt-1">
-          Master auction session controller, player stage initiator, and tournament reset
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-black text-white tracking-wide font-brand">
+            Admin Control Center
+          </h1>
+          <p className="text-xs text-white/50 mt-1">
+            Master auction session controller, player stage initiator, and bulk data manager
+          </p>
+        </div>
+
+        {/* Top Quick Actions */}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            onClick={() => setIsUploadModalOpen(true)}
+            className="glass-btn px-3.5 py-2 text-xs font-bold text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 flex items-center gap-1.5 cursor-pointer shadow-sm"
+            type="button"
+          >
+            <Upload className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Import CSV / JSON</span>
+          </button>
+
+          <button
+            onClick={() => setIsDeleteAllConfirmOpen(true)}
+            className="glass-btn px-3.5 py-2 text-xs font-bold text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/25 flex items-center gap-1.5 cursor-pointer"
+            type="button"
+            title="Delete all non-captain players"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+            <span>Clear Player Pool</span>
+          </button>
+        </div>
       </div>
 
       {/* Master Session Controls Bar */}
@@ -468,8 +398,14 @@ export default function AdminPage() {
       )}
 
       {auctionMessage && (
-        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs font-semibold">
-          {auctionMessage}
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs font-semibold flex items-center justify-between">
+          <span>{auctionMessage}</span>
+          <button
+            onClick={() => setAuctionMessage(null)}
+            className="text-amber-200/60 hover:text-amber-100 ml-4 cursor-pointer text-sm font-bold"
+          >
+            &times;
+          </button>
         </div>
       )}
 
@@ -491,9 +427,19 @@ export default function AdminPage() {
             onStartAuction={handleStartAuction}
             onSellPlayer={handleSellPlayer}
             onMarkUnsold={handleMarkUnsold}
+            onDeletePlayer={handleDeletePlayer}
             actionLoadingId={actionLoadingId}
+            deletingPlayerId={deletingPlayerId}
           />
         )}
+
+      {/* CSV / JSON Upload Modal */}
+      <CsvUploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        token={token}
+        onUploadSuccess={fetchPlayers}
+      />
 
       {/* Reset Confirmation Modal */}
       {isResetConfirmOpen && (
@@ -529,6 +475,46 @@ export default function AdminPage() {
                 type="button"
               >
                 {resetting ? "Resetting..." : "Confirm & Reset All"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear All Players Confirmation Modal */}
+      {isDeleteAllConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="glass-card max-w-md w-full p-6 sm:p-8 space-y-5 border-rose-500/30 bg-[#0e121c]/90 shadow-2xl">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-white">Delete All Players?</h3>
+                <p className="text-xs text-white/50">Permanent pool wipe</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-white/70 leading-relaxed">
+              This will permanently delete <strong>all non-captain players</strong> from the database and reset team rosters. Captains will be preserved.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => setIsDeleteAllConfirmOpen(false)}
+                disabled={deletingAll}
+                className="px-4 py-2 text-xs font-bold text-white/70 hover:text-white bg-white/[0.05] hover:bg-white/[0.1] rounded-xl transition cursor-pointer"
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAllPlayers}
+                disabled={deletingAll}
+                className="px-5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 rounded-xl transition shadow-lg cursor-pointer flex items-center gap-1.5"
+                type="button"
+              >
+                {deletingAll ? "Deleting..." : "Confirm Delete All"}
               </button>
             </div>
           </div>

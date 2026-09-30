@@ -64,7 +64,7 @@ app.use(
 app.use(helmet());
 
 //body parser also limits the data to 10 kb ...
-app.use(express.json({ limit: '10kb' }));
+app.use(express.json({ limit: '5mb' }));
 
 // Basic mongo operator injection sanitizer (avoid express-mongo-sanitize reassign bug with Express 5)
 app.use((req, res, next) => {

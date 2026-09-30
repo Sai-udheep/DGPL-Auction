@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+﻿import React, { useState, useEffect, useCallback } from "react";
 import { AuthContext } from "./authContextCore";
 import { API_URL } from "../config";
 
@@ -7,7 +7,6 @@ export default function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Define callbacks BEFORE any effect that depends on them to avoid TDZ errors.
   const logout = useCallback(() => {
     setToken(null);
     setUser(null);
@@ -18,21 +17,18 @@ export default function AuthProvider({ children }) {
 
   const login = useCallback(async (email, password) => {
     try {
-      const res = await fetch(
-        `${API_URL}/api/v1/users/login`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        }
-      );
+      const res = await fetch(`${API_URL}/api/v1/users/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
       if (!res.ok) {
         let message = "Login failed";
         try {
           const errData = await res.json();
           message = errData.message || errData.error || message;
         } catch {
-          // ignore JSON parse errors
+          // ignore
         }
         throw new Error(message);
       }
@@ -64,22 +60,23 @@ export default function AuthProvider({ children }) {
     }
   }, []);
 
-  // Validate stored token still maps to an existing user (detect reseed)
+  // Validate stored token still maps to an existing user with proper Bearer header
   useEffect(() => {
     const verify = async () => {
       if (!token || !user?._id) return;
       try {
-        const res = await fetch(
-          `${API_URL}/api/v1/users/${user._id}`
-        );
+        const res = await fetch(`${API_URL}/api/v1/users/${user._id}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        // Only clear auth if user was explicitly deleted (404) or token expired (401 with invalid token response)
         if (res.status === 404) {
-          console.warn(
-            "[Auth] Stored user no longer exists (likely reseed); clearing auth"
-          );
+          console.warn("[Auth] Stored user not found; clearing auth");
           logout();
         }
       } catch {
-        // Network errors ignored; don't log out on transient issues
+        // Network errors ignored; don't log out on transient connectivity issues
       }
     };
     verify();
