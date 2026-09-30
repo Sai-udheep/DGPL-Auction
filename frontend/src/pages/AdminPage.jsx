@@ -4,6 +4,7 @@ import PlayerTable from "../components/admin/PlayerTable";
 import CsvUploadModal from "../components/admin/CsvUploadModal";
 import CaptainsModal from "../components/admin/CaptainsModal";
 import RandomDrawModal from "../components/admin/RandomDrawModal";
+import AdminLiveStage from "../components/admin/AdminLiveStage";
 import { API_URL } from "../config";
 import { useAuth } from "../context/authContextCore";
 import { useSocket } from "../context/useSocket";
@@ -50,6 +51,7 @@ export default function AdminPage() {
   const [isCaptainsModalOpen, setIsCaptainsModalOpen] = useState(false);
   const [isRandomDrawModalOpen, setIsRandomDrawModalOpen] = useState(false);
   const [drawnPlayer, setDrawnPlayer] = useState(null);
+  const [liveStagePlayer, setLiveStagePlayer] = useState(null);
 
   // Descending academic years (4th to 1st)
   const yearOptions = useMemo(
@@ -86,10 +88,14 @@ export default function AdminPage() {
     let ignore = false;
     const fetchStatus = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/v1/auction/status`);
-        if (res.ok) {
-          const data = await res.json();
-          if (!ignore && data && data.data) {
+        const [statRes, curRes] = await Promise.all([
+          fetch(`${API_URL}/api/v1/auction/status`).catch(() => null),
+          fetch(`${API_URL}/api/v1/auction/current`).catch(() => null),
+        ]);
+
+        if (!ignore && statRes && statRes.ok) {
+          const data = await statRes.json();
+          if (data && data.data) {
             if (typeof data.data.isAuctionActive === "boolean") {
               setIsAuctionActive(data.data.isAuctionActive);
             }
@@ -98,6 +104,18 @@ export default function AdminPage() {
             } else {
               setCurrentAuctionPlayerId(null);
             }
+          }
+        }
+
+        if (!ignore && curRes && curRes.ok) {
+          const curData = await curRes.json();
+          const activePlayer = curData?.data?.player;
+          if (activePlayer) {
+            setLiveStagePlayer(activePlayer);
+            setCurrentAuctionPlayerId(String(activePlayer._id));
+            setIsAuctionActive(true);
+          } else {
+            setLiveStagePlayer(null);
           }
         }
       } catch {
@@ -128,6 +146,7 @@ export default function AdminPage() {
     const handleReset = () => {
       setIsAuctionActive(false);
       setCurrentAuctionPlayerId(null);
+      setLiveStagePlayer(null);
       fetchPlayers();
     };
 
@@ -135,6 +154,7 @@ export default function AdminPage() {
     const handleNewPlayer = (player) => {
       if (!player) return;
       setCurrentAuctionPlayerId(String(player._id));
+      setLiveStagePlayer(player);
       setIsAuctionActive(true);
       setPlayers((prev) =>
         prev.map((p) => {
@@ -156,12 +176,26 @@ export default function AdminPage() {
       if (!payload) return;
       // The server sends the full player snapshot in payload.player
       const player = payload.player || null;
-      if (!player || !player._id) return;
-      setPlayers((prev) =>
-        prev.map((p) =>
-          String(p._id) === String(player._id) ? { ...p, ...player } : p
-        )
-      );
+      if (player && player._id) {
+        setLiveStagePlayer(player);
+        setPlayers((prev) =>
+          prev.map((p) =>
+            String(p._id) === String(player._id) ? { ...p, ...player } : p
+          )
+        );
+      } else if (payload.latestBid) {
+        setLiveStagePlayer((prev) =>
+          prev && String(prev._id) === String(payload.playerId)
+            ? {
+                ...prev,
+                finalBidPrice: payload.finalBidPrice,
+                team: payload.leadingTeam?.id || prev.team,
+                teamName: payload.leadingTeam?.name || prev.teamName,
+                bidHistory: [...(prev.bidHistory || []), payload.latestBid],
+              }
+            : prev
+        );
+      }
     };
 
     // When player sold
@@ -169,6 +203,7 @@ export default function AdminPage() {
       if (!payload || !payload.player) return;
       const { player } = payload;
       setCurrentAuctionPlayerId(null);
+      setLiveStagePlayer(null);
       setIsAuctionActive(false);
       setPlayers((prev) =>
         prev.map((p) =>
@@ -183,6 +218,7 @@ export default function AdminPage() {
     const handlePlayerUnsold = (player) => {
       if (!player) return;
       setCurrentAuctionPlayerId(null);
+      setLiveStagePlayer(null);
       setIsAuctionActive(false);
       setPlayers((prev) =>
         prev.map((p) =>
@@ -413,6 +449,10 @@ export default function AdminPage() {
       }
       setIsAuctionActive(true);
       setCurrentAuctionPlayerId(playerId);
+      const startingPlayer = players.find((p) => String(p._id) === String(playerId));
+      if (startingPlayer) {
+        setLiveStagePlayer({ ...startingPlayer, status: "in_auction", bidHistory: [] });
+      }
       setAuctionMessage("Player is now in auction!");
       setPlayers((prev) =>
         prev.map((p) => {
@@ -488,6 +528,7 @@ export default function AdminPage() {
       const resData = await res.json();
       const soldPlayer = resData?.data?.player;
       setCurrentAuctionPlayerId(null);
+      setLiveStagePlayer(null);
       setIsAuctionActive(false);
       setAuctionMessage(`Player ${soldPlayer?.name || playerObj?.name || ""} successfully sold!`);
       setPlayers((prev) =>
@@ -528,6 +569,7 @@ export default function AdminPage() {
         throw new Error(errData.message || "Failed to mark player unsold");
       }
       setCurrentAuctionPlayerId(null);
+      setLiveStagePlayer(null);
       setIsAuctionActive(false);
       setAuctionMessage("Player marked as unsold.");
       setPlayers((prev) =>
