@@ -8,4 +8,4 @@ const appConfigSchema = new mongoose.Schema(
   { collection: 'appconfig' }
 );
 
-module.exports = mongoose.model('AppConfig', appConfigSchema);
+module.exports = mongoose.models.AppConfig || mongoose.model('AppConfig', appConfigSchema);
