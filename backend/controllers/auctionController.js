@@ -84,10 +84,11 @@ exports.startAuction = catchAsync(async (req, res, next) => {
     { $set: { status: 'unsold', bidHistory: [] } }
   );
 
-  player.status = 'in_auction';
-  player.bidHistory = [];
-  player.markedUnsold = false;
-  await player.save();
+  // Use findByIdAndUpdate to avoid Mongoose schema validation on old documents
+  // that don't have the markedUnsold field yet
+  await Player.findByIdAndUpdate(player._id, {
+    $set: { status: 'in_auction', bidHistory: [], markedUnsold: false },
+  });
 
   const populated = await Player.findById(player._id)
     .populate({ path: 'bidHistory.team', select: 'name' })
@@ -177,15 +178,12 @@ exports.sellPlayer = catchAsync(async (req, res, next) => {
     );
   }
 
-  // Update Team
-  const updatedTeam = await Team.findByIdAndUpdate(
-    team._id,
-    {
-      $addToSet: { players: player._id },
-      $inc: { budget: -finalBid },
-    },
-    { new: true }
+  // Update Team using collection directly to bypass middleware
+  await Team.collection.updateOne(
+    { _id: team._id },
+    { $addToSet: { players: player._id }, $inc: { budget: -finalBid } }
   );
+  const updatedTeam = await Team.findById(team._id);
 
   // Update Player
   const updatedPlayer = await Player.findByIdAndUpdate(
