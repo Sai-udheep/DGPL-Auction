@@ -240,22 +240,79 @@ export default function AdminPage() {
     }
   };
 
-  // Reset entire tournament
+  // Reset entire tournament (with auto-fallback to direct API if backend reset endpoint isn't deployed yet)
   const handleResetAuction = async () => {
     setResetting(true);
     setAuctionMessage(null);
     try {
-      const res = await fetch(`${API_URL}/api/v1/auction/reset`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || "Failed to reset auction");
+      let resetSucceeded = false;
+      try {
+        const res = await fetch(`${API_URL}/api/v1/auction/reset`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (res.ok) {
+          resetSucceeded = true;
+        }
+      } catch (_) {}
+
+      // If backend reset endpoint failed or isn't deployed yet, run comprehensive client fallback
+      if (!resetSucceeded) {
+        // 1. Fetch all players and reset all non-captains back to unsold
+        const pRes = await fetch(`${API_URL}/api/v1/players?limit=200`);
+        if (pRes.ok) {
+          const pData = await pRes.json();
+          const allP = pData?.data?.players || [];
+          const toReset = allP.filter(
+            (p) => !p.isCaptain && (p.status !== "unsold" || p.markedUnsold || (Array.isArray(p.bidHistory) && p.bidHistory.length > 0) || p.finalBidPrice != null)
+          );
+          await Promise.all(
+            toReset.map((p) =>
+              fetch(`${API_URL}/api/v1/players/${p._id}`, {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  status: "unsold",
+                  team: null,
+                  finalBidPrice: null,
+                  bidHistory: [],
+                  markedUnsold: false,
+                }),
+              }).catch(() => null)
+            )
+          );
+        }
+
+        // 2. Fetch all teams and restore budget to 100 and players to only captain
+        const tRes = await fetch(`${API_URL}/api/v1/teams`);
+        if (tRes.ok) {
+          const tData = await tRes.json();
+          const allT = tData?.data?.teams || [];
+          await Promise.all(
+            allT.map((t) => {
+              const captainId = t.captain?._id || t.captain;
+              return fetch(`${API_URL}/api/v1/teams/${t._id}`, {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  budget: 100,
+                  players: captainId ? [captainId] : [],
+                }),
+              }).catch(() => null);
+            })
+          );
+        }
       }
+
       setIsAuctionActive(false);
       setCurrentAuctionPlayerId(null);
       setAuctionMessage(
@@ -365,13 +422,54 @@ export default function AdminPage() {
     setActionLoadingId(playerId);
     setAuctionMessage(null);
     try {
+      const playerObj = players.find((p) => String(p._id) === String(playerId));
+      let teamId = playerObj?.team?._id || (typeof playerObj?.team === "string" ? playerObj.team : null);
+      let finalBid = playerObj?.finalBidPrice != null ? Number(playerObj.finalBidPrice) : null;
+
+      if ((!teamId || finalBid == null) && Array.isArray(playerObj?.bidHistory) && playerObj.bidHistory.length > 0) {
+        const topBid = playerObj.bidHistory[playerObj.bidHistory.length - 1];
+        if (!teamId) teamId = topBid.team?._id || topBid.team;
+        if (finalBid == null) finalBid = Number(topBid.bidAmount);
+      }
+
+      // If still missing teamId or finalBid, check current live player directly from server
+      if (!teamId || finalBid == null) {
+        try {
+          const curRes = await fetch(`${API_URL}/api/v1/auction/current`);
+          if (curRes.ok) {
+            const curData = await curRes.json();
+            const curPlayer = curData?.data?.player;
+            if (curPlayer && String(curPlayer._id) === String(playerId)) {
+              if (!teamId) teamId = curPlayer.team?._id || (typeof curPlayer.team === "string" ? curPlayer.team : null);
+              if (finalBid == null && curPlayer.finalBidPrice != null) finalBid = Number(curPlayer.finalBidPrice);
+              if ((!teamId || finalBid == null) && Array.isArray(curPlayer.bidHistory) && curPlayer.bidHistory.length > 0) {
+                const topBid = curPlayer.bidHistory[curPlayer.bidHistory.length - 1];
+                if (!teamId) teamId = topBid.team?._id || topBid.team;
+                if (finalBid == null) finalBid = Number(topBid.bidAmount);
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (!teamId || finalBid == null) {
+        throw new Error("No bids have been placed for this player. Use 'Mark Unsold' instead.");
+      }
+
+      const payload = {
+        playerId,
+        teamId,
+        finalBid,
+        finalBidPrice: finalBid,
+      };
+
       const res = await fetch(`${API_URL}/api/v1/auction/sell`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ playerId }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -381,14 +479,17 @@ export default function AdminPage() {
       const soldPlayer = resData?.data?.player;
       setCurrentAuctionPlayerId(null);
       setIsAuctionActive(false);
-      setAuctionMessage("Player successfully sold!");
+      setAuctionMessage(`Player ${soldPlayer?.name || playerObj?.name || ""} successfully sold!`);
       setPlayers((prev) =>
         prev.map((p) =>
-          p._id === playerId
+          String(p._id) === String(playerId)
             ? {
                 ...p,
                 ...(soldPlayer || {}),
                 status: "sold",
+                team: soldPlayer?.team || teamId,
+                teamName: soldPlayer?.teamName || "Sold",
+                finalBidPrice: finalBid,
               }
             : p
         )

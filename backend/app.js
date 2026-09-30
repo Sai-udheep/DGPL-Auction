@@ -123,11 +123,9 @@ app.get('/healthz', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 // Handle undefined routes
+const AppError = require('./utils/appError');
 app.use((req, res, next) => {
-  const error = new Error(`Can't find ${req.originalUrl} on this server!`);
-  error.status = 'fail';
-  error.statusCode = 404;
-  next(error);
+  next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));
 });
 app.use(globalErrorHandler);
 module.exports = app;

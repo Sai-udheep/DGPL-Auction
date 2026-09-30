@@ -32,8 +32,8 @@ export default function PlayerTable({
       {/* 1. Mobile & Windowed Card View (< md) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 md:hidden">
         {display.map((p) => {
-          const isLive = p.status === "in_auction";
-          const hasBids = Array.isArray(p.bidHistory) && p.bidHistory.length > 0;
+          const isLive = p.status === "in_auction" || String(p._id) === String(currentAuctionPlayerId);
+          const hasBids = (Array.isArray(p.bidHistory) && p.bidHistory.length > 0) || (p.finalBidPrice != null && Number(p.finalBidPrice) > 0) || Boolean(p.team);
           const isThisPlayerInAuction = String(p._id) === String(currentAuctionPlayerId);
           const otherPlayerIsLive = currentAuctionPlayerId !== null && !isThisPlayerInAuction;
           const disabled = actionLoadingId === p._id || deletingPlayerId === p._id;
