@@ -1,22 +1,19 @@
-import { useState, useEffect } from "react";
-import { useAuth } from "../context/authContextCore";
-import { API_URL } from "../config";
+﻿import React, { useState, useEffect } from "react";
 import YearSelector from "../components/admin/YearSelector";
 import PlayerTable from "../components/admin/PlayerTable";
 import { useSocket } from "../context/useSocket";
+import { useAuth } from "../context/authContextCore";
+import { API_URL } from "../config";
+import { Shield, Sparkles } from "lucide-react";
 
-// Admin Control Panel: select academic year, view unsold players for that year, start an auction
 const yearOptions = [
-  { label: "4th Year", value: 4 },
-  { label: "3rd Year", value: 3 },
-  { label: "2nd Year", value: 2 },
-  { label: "1st Year", value: 1 },
+  { value: "1", label: "1st Year" },
+  { value: "2", label: "2nd Year" },
+  { value: "3", label: "3rd Year" },
+  { value: "4", label: "4th Year" },
 ];
 
 export default function AdminPage() {
-  const { token } = useAuth();
-  const socketContext = useSocket() || {};
-  const socket = socketContext.socket || null;
   const [selectedYear, setSelectedYear] = useState(null);
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -24,16 +21,16 @@ export default function AdminPage() {
   const [actionLoadingId, setActionLoadingId] = useState(null);
   const [auctionMessage, setAuctionMessage] = useState(null);
 
-  // Fetch players when year changes (and a year is selected)
+  const { socket } = useSocket();
+  const { token } = useAuth();
+
   useEffect(() => {
     if (selectedYear == null) return;
-    let aborted = false;
-    const fetchPlayers = async () => {
+    let isCancelled = false;
+    const fetchPlayersByYear = async () => {
       setLoading(true);
       setError(null);
-      setPlayers([]);
       try {
-        // Fetch all players for the year (exclude sold later client-side)
         const res = await fetch(
           `${API_URL}/api/v1/players?year=${selectedYear}`,
           {
@@ -43,53 +40,44 @@ export default function AdminPage() {
             },
           }
         );
-        if (!res.ok) throw new Error(`Failed to load players (${res.status})`);
+        if (!res.ok) throw new Error("Failed to load players");
         const data = await res.json();
-        if (!aborted) setPlayers(data.data?.players || []);
+        if (!isCancelled) {
+          setPlayers(data.data?.players || []);
+        }
       } catch (err) {
-        if (!aborted) setError(err.message || "Error fetching players");
+        if (!isCancelled) setError(err.message);
       } finally {
-        if (!aborted) setLoading(false);
+        if (!isCancelled) setLoading(false);
       }
     };
-    fetchPlayers();
+    fetchPlayersByYear();
     return () => {
-      aborted = true;
+      isCancelled = true;
     };
   }, [selectedYear, token]);
 
-  // Attach socket bid events to update players list in realtime for current auction player.
   useEffect(() => {
     if (!socket) return;
     const handleNewBid = (payload) => {
       setPlayers((prev) => {
         return prev.map((p) => {
           if (p._id !== payload.playerId) return p;
-          // update bidHistory and finalBidPrice / team
-          let bidHistory = payload.bidHistory || p.bidHistory || [];
-          bidHistory = bidHistory.map((b) => ({
-            _id: b._id || b.timestamp || `${b.teamId}-${b.bidAmount}`,
-            team: b.teamId || b.team,
-            bidAmount: b.bidAmount,
-            timestamp: b.timestamp || Date.now(),
-            teamName: b.teamName,
-          }));
-          if (!payload.bidHistory && payload.latestBid) {
+          let bidHistory = payload.player?.bidHistory;
+          if (!bidHistory && payload.latestBid) {
             const lb = payload.latestBid;
-            bidHistory = [
-              ...bidHistory,
-              {
-                _id: lb.timestamp || Date.now(),
-                team: lb.teamId,
-                bidAmount: lb.bidAmount,
-                timestamp: lb.timestamp || Date.now(),
-                teamName: lb.teamName,
-              },
-            ];
+            const entry = {
+              _id: lb.timestamp || Date.now(),
+              team: lb.teamId,
+              teamName: lb.teamName,
+              bidAmount: lb.bidAmount,
+              timestamp: lb.timestamp || Date.now(),
+            };
+            bidHistory = [...(p.bidHistory || []), entry];
           }
           return {
             ...p,
-            bidHistory,
+            bidHistory: bidHistory || p.bidHistory,
             finalBidPrice: payload.finalBidPrice ?? p.finalBidPrice,
             team: payload.leadingTeam?.id || p.team,
             teamName: payload.leadingTeam?.name || p.teamName,
@@ -98,8 +86,8 @@ export default function AdminPage() {
         });
       });
     };
+
     const handleNewPlayer = (player) => {
-      // mark all others unsold if still unsold, set this one in_auction
       setPlayers((prev) =>
         prev.map((p) => ({
           ...p,
@@ -112,10 +100,10 @@ export default function AdminPage() {
         }))
       );
     };
+
     const handlePlayerSold = (payload) => {
       const soldPlayer = payload?.player || payload;
       if (!soldPlayer?._id) return;
-      // Update status to 'sold' (table hides sold entries via filter) without refetch
       setPlayers((prev) =>
         prev.map((p) =>
           p._id === soldPlayer._id
@@ -131,18 +119,20 @@ export default function AdminPage() {
         )
       );
     };
+
     const handlePlayerUnsold = (player) => {
       if (!player?._id) return;
       setPlayers((prev) =>
         prev.map((p) => (p._id === player._id ? { ...p, status: "unsold" } : p))
       );
     };
+
     socket.on("server:new_bid", handleNewBid);
     socket.on("new_player", handleNewPlayer);
     socket.on("server:player_sold", handlePlayerSold);
     socket.on("player_unsold", handlePlayerUnsold);
-    // Listen for namespaced unsold event if backend adds it later
     socket.on("server:player_unsold", handlePlayerUnsold);
+
     return () => {
       socket.off("server:new_bid", handleNewBid);
       socket.off("new_player", handleNewPlayer);
@@ -169,35 +159,31 @@ export default function AdminPage() {
         setPlayers(data.data?.players || []);
       }
     } catch {
-      /* ignore refresh errors */
+      /* ignore */
     }
   };
 
   const handleStartAuction = async (playerId) => {
     if (!token) {
-      setAuctionMessage("You must be logged in as admin to start auctions.");
+      setAuctionMessage("You must be signed in as admin to start auctions.");
       return;
     }
     setAuctionMessage(null);
     setActionLoadingId(playerId);
     try {
-      const res = await fetch(
-        `${API_URL}/api/v1/auction/start`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ playerId }),
-        }
-      );
+      const res = await fetch(`${API_URL}/api/v1/auction/start`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ playerId }),
+      });
       if (!res.ok) {
         const txt = await res.text();
         throw new Error(txt || "Failed to start auction");
       }
       setAuctionMessage("Auction started for selected player.");
-      // Refresh list to update statuses
       await refreshYearPlayers();
     } catch (err) {
       setAuctionMessage(err.message);
@@ -207,10 +193,8 @@ export default function AdminPage() {
   };
 
   const handleSellPlayer = async (playerId) => {
-    // Find player from current list to auto derive winning team & price
     const player = players.find((p) => p._id === playerId);
     if (!player) return;
-    // Determine winning team from last bid in bidHistory if present else player.team
     let winningTeamId = null;
     let finalBidPrice = null;
     if (player.bidHistory && player.bidHistory.length) {
@@ -228,24 +212,20 @@ export default function AdminPage() {
     setActionLoadingId(playerId);
     setAuctionMessage(null);
     try {
-      const res = await fetch(
-        `${API_URL}/api/v1/auction/sell`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            playerId,
-            teamId: winningTeamId,
-            finalBid: finalBidPrice,
-          }),
-        }
-      );
+      const res = await fetch(`${API_URL}/api/v1/auction/sell`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          playerId,
+          teamId: winningTeamId,
+          finalBid: finalBidPrice,
+        }),
+      });
       if (!res.ok) throw new Error(await res.text());
       setAuctionMessage("Player sold successfully.");
-      // Optimistic local update (will be confirmed / enriched by socket event)
       setPlayers((prev) =>
         prev.map((p) =>
           p._id === playerId
@@ -269,20 +249,16 @@ export default function AdminPage() {
     setActionLoadingId(playerId);
     setAuctionMessage(null);
     try {
-      const res = await fetch(
-        `${API_URL}/api/v1/auction/unsold`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ playerId }),
-        }
-      );
+      const res = await fetch(`${API_URL}/api/v1/auction/unsold`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ playerId }),
+      });
       if (!res.ok) throw new Error(await res.text());
       setAuctionMessage("Player marked unsold.");
-      // Optimistic local status update; socket event will also adjust
       setPlayers((prev) =>
         prev.map((p) => (p._id === playerId ? { ...p, status: "unsold" } : p))
       );
@@ -294,10 +270,13 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-10">
-      <h1 className="text-3xl font-black mb-8 text-white tracking-wide">
-        Admin Control Panel
-      </h1>
+    <div className="max-w-5xl mx-auto px-4 py-8 relative z-10 space-y-8">
+      <div>
+        <h1 className="text-3xl font-black text-white tracking-wide font-brand">
+          Admin Control Center
+        </h1>
+        <p className="text-xs text-white/50 mt-1">Manage tournament stages, initiate auctions, and close player sales</p>
+      </div>
 
       <YearSelector
         yearOptions={yearOptions}
@@ -306,19 +285,25 @@ export default function AdminPage() {
       />
 
       {selectedYear == null && (
-        <p className="text-[#94a3b8] font-medium">
-          Select a year to view available players.
-        </p>
+        <div className="glass-card p-8 text-center text-white/50 text-xs">
+          Select an academic year above to inspect and control the player pool.
+        </div>
       )}
 
       {loading && (
-        <p className="text-[#94a3b8] font-medium animate-pulse">Loading players...</p>
+        <div className="text-cyan-400 text-xs font-semibold animate-pulse tracking-widest uppercase">
+          Fetching player pool...
+        </div>
       )}
 
-      {error && <div className="text-red-400 font-semibold mb-4">{error}</div>}
+      {error && (
+        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-semibold">
+          {error}
+        </div>
+      )}
 
       {auctionMessage && (
-        <div className="mb-6 text-sm text-white bg-[#1f2937] px-4 py-3 rounded-xl border border-gray-700/60 font-bold shadow-md">
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs font-semibold">
           {auctionMessage}
         </div>
       )}
@@ -327,11 +312,14 @@ export default function AdminPage() {
         !error &&
         selectedYear != null &&
         players.filter((p) => p.status !== "sold").length === 0 && (
-          <p className="text-[#94a3b8] font-medium">No available players for this year.</p>
+          <div className="glass-card p-8 text-center text-white/50 text-xs">
+            No active or unsold players remaining for this academic year.
+          </div>
         )}
 
       {!loading &&
         !error &&
+        selectedYear != null &&
         players.filter((p) => p.status !== "sold").length > 0 && (
           <PlayerTable
             players={players}
