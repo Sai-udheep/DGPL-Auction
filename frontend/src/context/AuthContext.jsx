@@ -3,9 +3,33 @@ import { AuthContext } from "./authContextCore";
 import { API_URL } from "../config";
 
 export default function AuthProvider({ children }) {
-  const [token, setToken] = useState(null);
-  const [user, setUser] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  // Synchronous initialization from localStorage prevents flash-of-unauthenticated redirect on refresh
+  const [token, setToken] = useState(() => {
+    try {
+      return localStorage.getItem("auth_token") || null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [user, setUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem("auth_user");
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    try {
+      const storedToken = localStorage.getItem("auth_token");
+      const storedUser = localStorage.getItem("auth_user");
+      return !!(storedToken && storedUser);
+    } catch {
+      return false;
+    }
+  });
 
   const logout = useCallback(() => {
     setToken(null);
@@ -45,21 +69,6 @@ export default function AuthProvider({ children }) {
     }
   }, []);
 
-  // Load persisted auth on mount
-  useEffect(() => {
-    try {
-      const storedToken = localStorage.getItem("auth_token");
-      const storedUser = localStorage.getItem("auth_user");
-      if (storedToken && storedUser) {
-        setToken(storedToken);
-        setUser(JSON.parse(storedUser));
-        setIsAuthenticated(true);
-      }
-    } catch (e) {
-      console.error("Failed to parse stored auth data", e);
-    }
-  }, []);
-
   // Validate stored token still maps to an existing user with proper Bearer header
   useEffect(() => {
     const verify = async () => {
@@ -70,7 +79,7 @@ export default function AuthProvider({ children }) {
             Authorization: `Bearer ${token}`,
           },
         });
-        // Only clear auth if user was explicitly deleted (404) or token expired (401 with invalid token response)
+        // Only clear auth if user was explicitly deleted (404)
         if (res.status === 404) {
           console.warn("[Auth] Stored user not found; clearing auth");
           logout();
