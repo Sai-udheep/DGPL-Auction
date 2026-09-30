@@ -141,10 +141,12 @@ export default function AdminPage() {
     };
 
     // When a bid is placed — update bidHistory live on admin view
+    // server:new_bid sends: { player, playerId, latestBid, finalBidPrice, leadingTeam, bidHistoryLength }
     const handleBidPlaced = (payload) => {
       if (!payload) return;
-      const { player } = payload;
-      if (!player) return;
+      // The server sends the full player snapshot in payload.player
+      const player = payload.player || null;
+      if (!player || !player._id) return;
       setPlayers((prev) =>
         prev.map((p) =>
           String(p._id) === String(player._id) ? { ...p, ...player } : p
@@ -184,7 +186,7 @@ export default function AdminPage() {
     socket.on("server:auction_status_changed", handleStatusChanged);
     socket.on("server:auction_reset", handleReset);
     socket.on("new_player", handleNewPlayer);
-    socket.on("bid_placed", handleBidPlaced);
+    socket.on("server:new_bid", handleBidPlaced);
     socket.on("server:player_sold", handlePlayerSold);
     socket.on("player_sold", handlePlayerSold);
     socket.on("server:player_unsold", handlePlayerUnsold);
@@ -194,7 +196,7 @@ export default function AdminPage() {
       socket.off("server:auction_status_changed", handleStatusChanged);
       socket.off("server:auction_reset", handleReset);
       socket.off("new_player", handleNewPlayer);
-      socket.off("bid_placed", handleBidPlaced);
+      socket.off("server:new_bid", handleBidPlaced);
       socket.off("server:player_sold", handlePlayerSold);
       socket.off("player_sold", handlePlayerSold);
       socket.off("server:player_unsold", handlePlayerUnsold);

@@ -35,7 +35,7 @@ const AuctionSummary = () => {
         const [teamsRes, playersRes, unsoldRes] = await Promise.all([
           fetch(`${base}/api/v1/teams`, { headers }),
           fetch(`${base}/api/v1/players`, { headers }),
-          fetch(`${base}/api/v1/players?status=unsold`, { headers }),
+          fetch(`${base}/api/v1/players?status=unsold&markedUnsold=false`, { headers }),
         ]);
         if (!teamsRes.ok || !playersRes.ok || !unsoldRes.ok) {
           throw new Error("Failed to load auction data");
