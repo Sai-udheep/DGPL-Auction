@@ -1,6 +1,5 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 
-// PlayerTable dumb component
 export default function PlayerTable({
   players = [],
   onStartAuction,
@@ -10,169 +9,172 @@ export default function PlayerTable({
 }) {
   const [confirmId, setConfirmId] = useState(null);
   const [confirmUnsoldId, setConfirmUnsoldId] = useState(null);
-  if (!players.length) return null;
-  const display = players
-    .filter((p) => p.status !== "sold")
-    .sort((a, b) => a.name.localeCompare(b.name));
-  if (!display.length) return null;
+
+  const display = players.filter((p) => p.status !== "sold");
+
   return (
-    <div className="overflow-x-auto rounded-2xl border border-gray-700/60 bg-[#374151] shadow-xl">
-      <table className="min-w-full divide-y divide-gray-700/60">
-        <thead className="bg-gray-900 border-b border-gray-700">
-          <tr>
-            <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">
-              Name
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">
-              Category
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">
-              Base Price
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">
-              Current Bid
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">
-              Leading Team
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">
-              Status
-            </th>
-            <th className="px-4 py-3" />
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-700/40">
-          {display.map((p) => {
-            const isLive = p.status === "in_auction";
-            const hasBids = p.bidHistory && p.bidHistory.length > 0;
-            const disabled = actionLoadingId === p._id;
-            const isConfirming = confirmId === p._id;
-            const isConfirmingUnsold = confirmUnsoldId === p._id;
-            const currentBid =
-              isLive && hasBids
-                ? `${p.bidHistory[p.bidHistory.length - 1].bidAmount} Pts`
-                : isLive
-                ? `${p.basePrice} Pts`
-                : "—";
-            const latestBid = hasBids
-              ? p.bidHistory[p.bidHistory.length - 1]
-              : null;
-            const leadingTeamName = isLive
-              ? latestBid?.teamName ||
-                (latestBid?.team && latestBid.team.name) ||
-                p.teamName ||
-                (p.team && p.team.name) ||
-                "—"
-              : "—";
-            return (
-              <tr
-                key={p._id}
-                className={
-                  "transition-colors hover:bg-gray-800/50 " +
-                  (isLive ? "bg-[#facc15]/10 border-l-4 border-l-[#facc15]" : "")
-                }
-              >
-                <td className="px-4 py-3 text-sm font-bold text-[#60a5fa]">
-                  {p.name}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-300">
-                  <span className="uppercase text-xs font-bold px-2 py-0.5 rounded bg-gray-900 border border-gray-700 text-white">
-                    {p.category || "-"}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-300 font-medium">
-                  {p.basePrice != null ? `${p.basePrice} Pts` : "—"}
-                </td>
-                <td className="px-4 py-3 text-sm text-[#34d399] font-black">
-                  {currentBid}
-                </td>
-                <td className="px-4 py-3 text-sm text-white font-semibold">
-                  {leadingTeamName}
-                </td>
-                <td className="px-4 py-3 text-sm">
-                  {isLive ? (
-                    <span className="inline-flex items-center gap-1 text-black bg-[#facc15] border border-[#facc15] px-2.5 py-0.5 rounded-full text-xs font-black shadow-sm animate-pulse">
-                      Live
+    <div className="glass-card overflow-hidden border border-white/10 shadow-2xl">
+      <div className="overflow-x-auto custom-scroll">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="border-b border-white/10 bg-white/[0.02]">
+              <th className="px-5 py-3.5 text-xs font-bold text-white/50 uppercase tracking-wider">
+                Player
+              </th>
+              <th className="px-5 py-3.5 text-xs font-bold text-white/50 uppercase tracking-wider">
+                Category
+              </th>
+              <th className="px-5 py-3.5 text-xs font-bold text-white/50 uppercase tracking-wider">
+                Base Price
+              </th>
+              <th className="px-5 py-3.5 text-xs font-bold text-white/50 uppercase tracking-wider">
+                Highest Bid
+              </th>
+              <th className="px-5 py-3.5 text-xs font-bold text-white/50 uppercase tracking-wider">
+                Leading Team
+              </th>
+              <th className="px-5 py-3.5 text-xs font-bold text-white/50 uppercase tracking-wider">
+                Status
+              </th>
+              <th className="px-5 py-3.5 text-right text-xs font-bold text-white/50 uppercase tracking-wider">
+                Action
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/[0.05]">
+            {display.map((p) => {
+              const isLive = p.status === "in_auction";
+              const hasBids = p.bidHistory && p.bidHistory.length > 0;
+              const disabled = actionLoadingId === p._id;
+              const isConfirming = confirmId === p._id;
+              const isConfirmingUnsold = confirmUnsoldId === p._id;
+              const currentBid =
+                isLive && hasBids
+                  ? `${p.bidHistory[p.bidHistory.length - 1].bidAmount} Pts`
+                  : isLive
+                  ? `${p.basePrice} Pts`
+                  : "-";
+              const latestBid = hasBids
+                ? p.bidHistory[p.bidHistory.length - 1]
+                : null;
+              const leadingTeamName = isLive
+                ? latestBid?.teamName ||
+                  (latestBid?.team && latestBid.team.name) ||
+                  p.teamName ||
+                  (p.team && p.team.name) ||
+                  "-"
+                : "-";
+
+              return (
+                <tr
+                  key={p._id}
+                  className={`transition-colors hover:bg-white/[0.03] ${
+                    isLive ? "bg-amber-500/[0.07]" : ""
+                  }`}
+                >
+                  <td className="px-5 py-4 text-xs font-bold text-white">
+                    {p.name}
+                  </td>
+                  <td className="px-5 py-4 text-xs text-white/70">
+                    <span className="uppercase text-[10px] font-bold px-2 py-0.5 rounded-md bg-white/[0.06] border border-white/10 text-white/80">
+                      {p.category || "-"}
                     </span>
-                  ) : (
-                    <span className="text-gray-400 text-xs font-semibold">Unsold</span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-right space-x-2">
-                  {!isLive && (
-                    <button
-                      onClick={() => onStartAuction && onStartAuction(p._id)}
-                      disabled={disabled || isLive}
-                      className={`inline-flex items-center gap-1 rounded-xl px-3.5 py-1.5 text-xs font-extrabold transition-all focus:outline-none ${
-                        disabled
-                          ? "bg-gray-800 text-gray-500 cursor-not-allowed"
-                          : "bg-[#facc15] text-black hover:bg-[#eab308] shadow"
-                      }`}
-                      type="button"
-                    >
-                      {disabled ? "Starting..." : "Start Auction"}
-                    </button>
-                  )}
-                  {isLive && hasBids && (
-                    <button
-                      onClick={() => {
-                        if (isConfirming) {
-                          onSellPlayer && onSellPlayer(p._id);
-                          setConfirmId(null);
-                        } else {
-                          setConfirmId(p._id);
-                        }
-                      }}
-                      disabled={disabled}
-                      className={`inline-flex items-center gap-1 rounded-xl px-3.5 py-1.5 text-xs font-bold border focus:outline-none focus:ring-2 focus:ring-emerald-400 transition-all ${
-                        disabled
-                          ? "bg-emerald-950 text-gray-500 cursor-not-allowed"
+                  </td>
+                  <td className="px-5 py-4 text-xs text-white/60 font-medium">
+                    {p.basePrice != null ? `${p.basePrice} Pts` : "-"}
+                  </td>
+                  <td className="px-5 py-4 text-xs text-emerald-400 font-extrabold">
+                    {currentBid}
+                  </td>
+                  <td className="px-5 py-4 text-xs text-white/90 font-semibold">
+                    {leadingTeamName}
+                  </td>
+                  <td className="px-5 py-4 text-xs">
+                    {isLive ? (
+                      <span className="inline-flex items-center gap-1.5 text-slate-950 bg-gradient-to-r from-amber-400 to-orange-400 px-2.5 py-0.5 rounded-full text-[10px] font-black shadow-sm">
+                        <span className="w-1.5 h-1.5 rounded-full bg-black animate-ping" />
+                        LIVE
+                      </span>
+                    ) : (
+                      <span className="text-white/40 text-[11px] font-medium">Unsold</span>
+                    )}
+                  </td>
+                  <td className="px-5 py-4 text-right space-x-2">
+                    {!isLive && (
+                      <button
+                        onClick={() => onStartAuction && onStartAuction(p._id)}
+                        disabled={disabled || isLive}
+                        className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all focus:outline-none cursor-pointer ${
+                          disabled
+                            ? "bg-white/[0.04] text-white/30 cursor-not-allowed"
+                            : "bg-gradient-to-r from-amber-400 via-orange-400 to-amber-300 text-slate-950 hover:brightness-110 shadow-sm"
+                        }`}
+                        type="button"
+                      >
+                        {disabled ? "Starting..." : "Start Auction"}
+                      </button>
+                    )}
+                    {isLive && hasBids && (
+                      <button
+                        onClick={() => {
+                          if (isConfirming) {
+                            onSellPlayer && onSellPlayer(p._id);
+                            setConfirmId(null);
+                          } else {
+                            setConfirmId(p._id);
+                          }
+                        }}
+                        disabled={disabled}
+                        className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                          disabled
+                            ? "bg-emerald-950/40 text-white/30 cursor-not-allowed"
+                            : isConfirming
+                            ? "bg-emerald-500 text-slate-950 border-emerald-400 font-extrabold shadow"
+                            : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30"
+                        }`}
+                        type="button"
+                      >
+                        {disabled
+                          ? "Saving..."
                           : isConfirming
-                          ? "bg-emerald-600 text-white border-emerald-500 hover:bg-emerald-700 shadow"
-                          : "bg-emerald-700 text-white border-emerald-600 hover:bg-emerald-600 shadow"
-                      }`}
-                      type="button"
-                    >
-                      {disabled
-                        ? "Saving..."
-                        : isConfirming
-                        ? "Confirm"
-                        : "Sell"}
-                    </button>
-                  )}
-                  {isLive && !hasBids && (
-                    <button
-                      onClick={() => {
-                        if (isConfirmingUnsold) {
-                          onMarkUnsold && onMarkUnsold(p._id);
-                          setConfirmUnsoldId(null);
-                        } else {
-                          setConfirmUnsoldId(p._id);
-                        }
-                      }}
-                      disabled={disabled}
-                      className={`inline-flex items-center gap-1 rounded-xl px-3.5 py-1.5 text-xs font-bold border focus:outline-none focus:ring-2 focus:ring-red-400 transition-all ${
-                        disabled
-                          ? "bg-red-950 text-gray-500 cursor-not-allowed"
+                          ? "Confirm Sell"
+                          : "Sell Player"}
+                      </button>
+                    )}
+                    {isLive && !hasBids && (
+                      <button
+                        onClick={() => {
+                          if (isConfirmingUnsold) {
+                            onMarkUnsold && onMarkUnsold(p._id);
+                            setConfirmUnsoldId(null);
+                          } else {
+                            setConfirmUnsoldId(p._id);
+                          }
+                        }}
+                        disabled={disabled}
+                        className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                          disabled
+                            ? "bg-rose-950/40 text-white/30 cursor-not-allowed"
+                            : isConfirmingUnsold
+                            ? "bg-rose-500 text-white border-rose-400 font-extrabold shadow"
+                            : "bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30"
+                        }`}
+                        type="button"
+                      >
+                        {disabled
+                          ? "Updating..."
                           : isConfirmingUnsold
-                          ? "bg-red-600 text-white border-red-500 hover:bg-red-700 shadow"
-                          : "bg-red-700 text-white border-red-600 hover:bg-red-600 shadow"
-                      }`}
-                      type="button"
-                    >
-                      {disabled
-                        ? "Updating..."
-                        : isConfirmingUnsold
-                        ? "Confirm"
-                        : "Unsold"}
-                    </button>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                          ? "Confirm Unsold"
+                          : "Mark Unsold"}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

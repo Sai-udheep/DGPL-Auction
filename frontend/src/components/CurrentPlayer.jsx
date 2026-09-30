@@ -1,12 +1,13 @@
-import React, { useEffect, useState, useMemo } from "react";
+﻿import React, { useEffect, useState, useMemo } from "react";
 import { useAuth } from "../context/authContextCore";
 import { useSocket } from "../context/useSocket";
 import { formatAcademicYear } from "../utils/formatters";
 import CurrentPlayerSkeleton from "./CurrentPlayerSkeleton";
+import { Flame, Coins, Shield, Clock } from "lucide-react";
 
-// Local helper component to log server bid errors
 const BidErrorListener = ({ socket }) => {
   React.useEffect(() => {
+    if (!socket) return;
     const handler = (payload) => {
       console.warn("[Bid][Client] server:bid_error", payload);
     };
@@ -16,36 +17,13 @@ const BidErrorListener = ({ socket }) => {
   return null;
 };
 
-/**
- * CurrentPlayer component
- * Displays details of the player currently in auction.
- * Fetches next unsold player dynamically from backend.
- */
 const CurrentPlayer = ({ player: livePlayer, teams = [] }) => {
-  useEffect(() => {
-    if (livePlayer) {
-      console.log(
-        "[CurrentPlayer] Received livePlayer prop id:",
-        livePlayer._id,
-        "name:",
-        livePlayer.name
-      );
-    } else {
-      console.log("[CurrentPlayer] No livePlayer prop provided");
-    }
-  }, [livePlayer]);
   const { isAuthenticated, user } = useAuth();
   const { socket } = useSocket() || {};
-  // Fallback fetching disabled for debugging real-time path
-  const [fetchedPlayer] = useState(null);
   const [loading, setLoading] = useState(!livePlayer);
-  const [error] = useState(null);
 
-  // If a live player (in_auction) is supplied via props, prefer it.
-  const player = livePlayer || fetchedPlayer;
+  const player = livePlayer;
 
-  // Fallback fetch ONLY when no live player is supplied (legacy behavior)
-  // TEMP: Disable fallback loading to isolate real-time update issue
   useEffect(() => {
     if (livePlayer) setLoading(false);
     else setLoading(false);
@@ -58,25 +36,27 @@ const CurrentPlayer = ({ player: livePlayer, teams = [] }) => {
     );
   }, [player]);
 
-  if (loading) return <CurrentPlayerSkeleton />; // still show skeleton during initial mount
-  if (error)
+  if (loading) return <CurrentPlayerSkeleton />;
+
+  if (!player) {
     return (
-      <div className="bg-[#1e293b] text-white rounded-2xl shadow-xl p-8 border border-red-500/40">
-        <p className="text-center text-red-400 font-semibold">{error}</p>
+      <div className="glass-card p-12 text-center max-w-lg w-full flex flex-col items-center justify-center space-y-4">
+        <div className="w-12 h-12 rounded-full bg-white/[0.05] border border-white/10 flex items-center justify-center text-white/40 animate-pulse">
+          <Clock className="w-6 h-6 text-amber-400/60" />
+        </div>
+        <div>
+          <h3 className="text-lg font-bold text-white tracking-wide">Waiting for Next Player</h3>
+          <p className="text-xs text-white/50 mt-1">The auctioneer will begin the next bidding round shortly.</p>
+        </div>
       </div>
     );
-  if (!player)
-    return (
-      <div className="bg-[#1e293b] text-white rounded-2xl shadow-xl p-8 border border-[#334155]">
-        <p className="text-center font-semibold text-[#94a3b8] animate-pulse">Waiting for the next player...</p>
-      </div>
-    );
+  }
 
   const { name, image, category, year } = player;
   const currentBidRaw = player.finalBidPrice ?? player.basePrice ?? null;
   const currentBid = currentBidRaw != null ? Number(currentBidRaw) : null;
-  const leadingTeamName = player.teamName || "";
-  // Helper: compute next bid using backend tiered rules
+  const leadingTeamName = player.teamName || (player.team?.name) || "";
+
   const computeNextBidAmount = (amount) => {
     if (amount == null) return null;
     const n = Number(amount);
@@ -87,10 +67,10 @@ const CurrentPlayer = ({ player: livePlayer, teams = [] }) => {
     else inc = 1;
     return Number((n + inc).toFixed(2));
   };
+
   const hasBids = sortedBids.length > 0;
   let nextBidNumeric = null;
   if (!hasBids) {
-    // First bid equals the base price
     nextBidNumeric =
       typeof player.basePrice === "number"
         ? Number(player.basePrice)
@@ -104,51 +84,38 @@ const CurrentPlayer = ({ player: livePlayer, teams = [] }) => {
         ? computeNextBidAmount(basisAmount)
         : null;
   }
+
   const nextBidAmount =
     nextBidNumeric != null
       ? nextBidNumeric.toFixed(2).replace(/\.00$/, "")
       : null;
 
-  // Accept legacy or alternate role naming: 'team-owner' or 'captain'
   const isTeamOwner =
     isAuthenticated &&
     (user?.role === "team-owner" || user?.role === "captain");
 
   const handleBid = () => {
-    if (!socket || !player?._id) {
-      console.log("[Bid][Client] Cannot emit: socket or player missing", {
-        hasSocket: !!socket,
-        playerId: player?._id,
-      });
-      return;
-    }
-    console.log(
-      "[Bid][Client] Emitting captain:place_bid for player",
-      player._id
-    );
+    if (!socket || !player?._id) return;
     try {
       socket.emit("captain:place_bid", { playerId: player._id });
     } catch (e) {
-      // swallow emit errors (could add toast later)
       console.error("Bid emit failed", e);
     }
   };
 
-  // Determine if this user is the current leading bidder (so they cannot bid again immediately)
   const latestBid = sortedBids[0];
-  const userTeamId = user?.team?._id || user?.team; // support either populated object or raw id
+  const userTeamId = user?.team?._id || user?.team;
   const leadingBidTeamId =
     latestBid?.team?._id ||
     latestBid?.team ||
     player?.team?._id ||
     player?.team;
   const isLeadingTeam = Boolean(
-    userTeamId && leadingBidTeamId && userTeamId === leadingBidTeamId
+    userTeamId && leadingBidTeamId && String(userTeamId) === String(leadingBidTeamId)
   );
 
-  // Resolve full team object from passed teams prop for accurate live budget
   const fullUserTeam = teams.find(
-    (t) => (t._id || t.id) === (userTeamId || "")
+    (t) => String(t._id || t.id) === String(userTeamId || "")
   );
   const userTeamBudget = fullUserTeam?.budget ?? user?.team?.budget ?? null;
   const isOutOfBudget =
@@ -156,174 +123,178 @@ const CurrentPlayer = ({ player: livePlayer, teams = [] }) => {
     nextBidNumeric != null &&
     typeof userTeamBudget === "number" &&
     userTeamBudget < nextBidNumeric;
-  if (isOutOfBudget && import.meta.env?.DEV) {
-    console.log(
-      "[CurrentPlayer] Out of budget: teamBudget=%s nextBid=%s",
-      userTeamBudget,
-      nextBidNumeric
-    );
-  }
+
+  const getCategoryColor = (cat) => {
+    switch (cat) {
+      case "Batsman":
+        return "from-indigo-500/20 to-blue-500/20 text-indigo-300 border-indigo-500/30";
+      case "Bowler":
+        return "from-cyan-500/20 to-teal-500/20 text-cyan-300 border-cyan-500/30";
+      case "All-Rounder":
+        return "from-emerald-500/20 to-teal-500/20 text-emerald-300 border-emerald-500/30";
+      case "Wicket-Keeper":
+        return "from-amber-500/20 to-orange-500/20 text-amber-300 border-amber-500/30";
+      default:
+        return "from-white/10 to-white/5 text-white/80 border-white/15";
+    }
+  };
 
   return (
-    <div className="bg-[#1f2937] rounded-2xl shadow-xl overflow-hidden max-w-md w-full border border-gray-700/60">
-      {/* Bid error listener registration */}
+    <div className="glass-card max-w-md w-full overflow-hidden flex flex-col">
       {socket && <BidErrorListener socket={socket} />}
-      {/* Player Image */}
+
+      {/* Image Preview with Aspect Ratio */}
       {image && (
-        <div className="aspect-[3/4] w-full overflow-hidden bg-gray-900 border-b border-gray-700/60">
+        <div className="aspect-[3/4] w-full overflow-hidden bg-black/40 relative border-b border-white/[0.08] group">
           <img
             src={image}
             alt={name}
-            className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+            className="w-full h-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
             loading="lazy"
+            onError={(e) => {
+              e.target.src = `https://via.placeholder.com/300x400?text=${encodeURIComponent(name)}`;
+            }}
           />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#06070a]/90 via-transparent to-transparent opacity-80" />
+
+          {/* Live In-Auction Badge */}
+          <div className="absolute top-4 left-4 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/15 text-[11px] font-bold text-amber-300 shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+            <span>IN AUCTION</span>
+          </div>
         </div>
       )}
 
+      {/* Content Section */}
       <div className="p-6 space-y-5">
-        {/* Meta */}
-        <div className="text-sm font-semibold tracking-wider text-gray-300 flex items-center gap-2">
-          <span className="uppercase px-2.5 py-0.5 rounded-full bg-gray-800 border border-gray-700 text-white text-xs font-bold">
+        {/* Category & Academic Year */}
+        <div className="flex items-center gap-2">
+          <span className={`text-[11px] font-bold uppercase tracking-wider px-3 py-0.5 rounded-full bg-gradient-to-r border ${getCategoryColor(category)}`}>
             {category}
           </span>
-          {year && <span className="text-gray-500">•</span>}
+          {year && <span className="text-white/30">•</span>}
           {year && (
-            <span className="text-gray-300 text-xs font-medium">
+            <span className="text-xs font-semibold text-white/60">
               {formatAcademicYear(year)}
             </span>
           )}
         </div>
 
-        {/* Name */}
-        <h2 className="text-2xl sm:text-3xl font-extrabold text-white leading-tight">
+        {/* Player Name */}
+        <h2 className="text-2xl sm:text-3xl font-black text-white leading-tight tracking-wide font-brand">
           {name}
         </h2>
 
-        {/* Current Bid Section */}
-        <div className="bg-[#111827] rounded-xl p-4 sm:p-5 border border-gray-700/60">
-          <h3 className="text-xs uppercase tracking-wider text-gray-400 font-bold mb-1.5">
-            Current Bid
-          </h3>
-          <div className="flex items-end gap-4 flex-wrap">
-            <span className="flex items-baseline gap-1 text-white">
-              <span className="text-3xl sm:text-4xl font-black leading-none text-[#34d399]">
+        {/* Current Bid Display Box */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-white/[0.03] border border-white/[0.08] shadow-inner space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-white/45">
+              Current Bid
+            </span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-white/45">
+              Base Price: {player.basePrice != null ? `${player.basePrice} Pts` : "-"}
+            </span>
+          </div>
+
+          <div className="flex items-baseline justify-between">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-3xl sm:text-4xl font-black text-emerald-400 tracking-tight leading-none">
                 {currentBid != null ? currentBid : "--"}
               </span>
-              {currentBid != null && (
-                <span className="text-lg font-bold tracking-wide text-[#10b981]">
-                  Pts
-                </span>
-              )}
-            </span>
-            <div className="flex flex-col">
-              <span className="text-xs font-semibold text-gray-400 uppercase">
-                Leading Team
-              </span>
-              <span className="text-base font-bold text-white">
-                {leadingTeamName || "—"}
+              <span className="text-sm font-bold text-emerald-300 uppercase tracking-wide">
+                Pts
               </span>
             </div>
-            {isTeamOwner && (
-              <div className="flex flex-col ml-auto text-right">
-                <span className="text-xs font-semibold text-gray-400 uppercase">
-                  Your Budget
-                </span>
-                <span
-                  className={`text-sm font-bold ${
-                    isOutOfBudget ? "text-red-400" : "text-[#34d399]"
-                  }`}
-                >
-                  {typeof userTeamBudget === "number"
-                    ? `${userTeamBudget.toFixed(2).replace(/\.00$/, "")} Pts`
-                    : "—"}
-                </span>
-              </div>
-            )}
+
+            <div className="text-right">
+              <span className="text-[10px] uppercase font-bold text-white/40 block">
+                Holding Team
+              </span>
+              <span className="text-sm font-bold text-white truncate max-w-[150px] inline-block">
+                {leadingTeamName || "No Bids Yet"}
+              </span>
+            </div>
           </div>
-        </div>
 
-        {/* Bid History */}
-        <div>
-          <h3 className="text-xs uppercase tracking-wider text-gray-400 font-bold mb-2.5">
-            Bid History
-          </h3>
-          {sortedBids.length === 0 && (
-            <p className="text-gray-400 text-sm italic">No bids yet.</p>
+          {/* Budget status if Team Captain */}
+          {isTeamOwner && (
+            <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between text-xs">
+              <span className="text-white/50">Your Team Purse:</span>
+              <span className={`font-bold ${isOutOfBudget ? "text-rose-400" : "text-emerald-400"}`}>
+                {typeof userTeamBudget === "number"
+                  ? `${userTeamBudget.toFixed(2).replace(/\.00$/, "")} Pts`
+                  : "-"}
+              </span>
+            </div>
           )}
-          <ul className="space-y-2 max-h-56 overflow-y-auto pr-1 custom-scroll">
-            {sortedBids.map((bid, index) => {
-              const isLatest = index === 0;
-              return (
-                <li
-                  key={bid._id || bid.timestamp}
-                  className={`flex items-center justify-between rounded-xl px-3.5 py-2 text-sm font-medium transition-colors border ${
-                    isLatest
-                      ? "bg-gray-800 border-gray-600 text-white"
-                      : "bg-[#111827] border-gray-800 text-gray-300 hover:bg-gray-800"
-                  }`}
-                >
-                  <span className="text-white flex items-center gap-2 font-semibold">
-                    {isLatest && (
-                      <span className="inline-block w-2 h-2 bg-[#34d399] rounded-full animate-pulse shadow-sm" />
-                    )}
-                    {bid.teamName || "Unknown Team"}
-                  </span>
-                  <span className="text-[#34d399] font-bold flex items-baseline gap-1">
-                    <span>{bid.bidAmount}</span>
-                    <span className="text-xs font-bold tracking-wide opacity-80">
-                      Pts
-                    </span>
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
         </div>
 
-        {isTeamOwner && (
-          <div className="pt-2">
-            <div className="relative">
-              {isOutOfBudget && (
-                <div className="absolute -top-5 left-0 w-full text-center text-xs font-semibold text-red-400">
-                  Out of budget
-                </div>
-              )}
-              <button
-                onClick={
-                  !isLeadingTeam && !isOutOfBudget ? handleBid : undefined
-                }
-                disabled={isLeadingTeam || isOutOfBudget}
-                className={`relative w-full py-3 px-5 rounded-xl font-extrabold text-base sm:text-lg flex items-center justify-center gap-3 transition-all duration-200 focus:outline-none shadow active:scale-[0.98]
-                ${
-                  isLeadingTeam
-                    ? "bg-gray-800 text-gray-400 cursor-not-allowed border border-gray-700"
-                    : isOutOfBudget
-                    ? "bg-gray-900 text-gray-500 cursor-not-allowed border border-gray-800"
-                    : "bg-[#facc15] text-black hover:bg-[#eab308] shadow-md"
-                }`}
-                type="button"
-              >
-                <span className="tracking-wide">
-                  {isLeadingTeam
-                    ? "Leading"
-                    : isOutOfBudget
-                    ? "Insufficient Funds"
-                    : "Bid"}
-                </span>
-                {!isLeadingTeam && nextBidAmount && (
-                  <span
-                    className={`flex items-center gap-1 px-3 py-1 rounded-lg text-sm font-extrabold shadow-sm ${
-                      isOutOfBudget
-                        ? "bg-gray-800 text-gray-500"
-                        : "bg-black text-white"
+        {/* Bid History Stream */}
+        <div>
+          <h3 className="text-[11px] uppercase tracking-wider text-white/45 font-bold mb-2.5 flex items-center justify-between">
+            <span>Bid Stream</span>
+            <span className="text-white/30 font-normal">{sortedBids.length} bids</span>
+          </h3>
+
+          {sortedBids.length === 0 ? (
+            <p className="text-white/40 text-xs italic py-2">First bid will open at base price.</p>
+          ) : (
+            <ul className="space-y-1.5 max-h-48 overflow-y-auto pr-1 custom-scroll">
+              {sortedBids.map((bid, index) => {
+                const isLatest = index === 0;
+                return (
+                  <li
+                    key={bid._id || bid.timestamp || index}
+                    className={`flex items-center justify-between px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors border ${
+                      isLatest
+                        ? "bg-white/[0.08] border-white/20 text-white shadow-sm"
+                        : "bg-white/[0.02] border-white/[0.05] text-white/60"
                     }`}
                   >
-                    <span>{nextBidAmount}</span>
-                    <span className="text-xs font-bold text-gray-300">Pts</span>
-                  </span>
-                )}
-              </button>
-            </div>
+                    <span className="flex items-center gap-2 font-medium">
+                      {isLatest && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      )}
+                      <span>{bid.teamName || "Team"}</span>
+                    </span>
+                    <span className="font-extrabold text-emerald-400">
+                      {bid.bidAmount} Pts
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        {/* Place Bid Action (Captains only) */}
+        {isTeamOwner && (
+          <div className="pt-2">
+            <button
+              onClick={!isLeadingTeam && !isOutOfBudget ? handleBid : undefined}
+              disabled={isLeadingTeam || isOutOfBudget}
+              className={`w-full py-3.5 px-5 rounded-2xl font-extrabold text-sm sm:text-base flex items-center justify-center gap-2.5 transition-all duration-200 focus:outline-none shadow-lg cursor-pointer ${
+                isLeadingTeam
+                  ? "bg-white/[0.06] text-white/40 border border-white/10 cursor-not-allowed"
+                  : isOutOfBudget
+                  ? "bg-rose-500/10 text-rose-300 border border-rose-500/30 cursor-not-allowed"
+                  : "bg-gradient-to-r from-amber-400 via-orange-400 to-amber-300 text-slate-950 hover:brightness-110 active:scale-[0.98] shadow-amber-500/20"
+              }`}
+              type="button"
+            >
+              <span>
+                {isLeadingTeam
+                  ? "Holding Highest Bid"
+                  : isOutOfBudget
+                  ? "Insufficient Funds"
+                  : "Place Bid"}
+              </span>
+              {!isLeadingTeam && nextBidAmount && !isOutOfBudget && (
+                <span className="px-2.5 py-0.5 rounded-lg bg-black/20 text-slate-950 font-black text-xs">
+                  {nextBidAmount} Pts
+                </span>
+              )}
+            </button>
           </div>
         )}
       </div>

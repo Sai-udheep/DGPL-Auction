@@ -1,6 +1,7 @@
-import React, { useMemo } from "react";
+﻿import React, { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { formatAcademicYear } from "../utils/formatters";
+import { Coins, Users, Trophy } from "lucide-react";
 
 const TeamDetailView = ({ team, teamPlayers = [] }) => {
   const formatPts = (val) => (val || val === 0 ? `${val} Pts` : "-");
@@ -23,134 +24,142 @@ const TeamDetailView = ({ team, teamPlayers = [] }) => {
   if (!team) return null;
 
   return (
-    <div>
-      <h2 className="text-2xl sm:text-3xl font-black text-white mb-6 tracking-wide">
-        {team.name}
-      </h2>
-      <div className="grid gap-6 md:grid-cols-3 mb-8">
-        <div className="bg-[#374151] border border-gray-700/60 rounded-2xl p-5 shadow-md">
-          <h5 className="text-xs tracking-wider uppercase text-gray-400 font-bold mb-1">
-            Players Bought
-          </h5>
+    <div className="space-y-8">
+      {/* Team Header Title */}
+      <div>
+        <h2 className="text-2xl sm:text-3xl font-black text-white tracking-wide font-brand">
+          {team.name}
+        </h2>
+        <p className="text-xs text-white/50 mt-0.5">Team Roster and Budget Overview</p>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-3">
+        <div className="glass-card p-5 space-y-1">
+          <div className="flex items-center justify-between text-white/40">
+            <span className="text-[11px] font-bold uppercase tracking-wider">Players Acquired</span>
+            <Users className="w-4 h-4 text-cyan-400" />
+          </div>
           <p className="text-3xl font-black text-white">{teamPlayers.length}</p>
         </div>
-        <div className="bg-[#374151] border border-gray-700/60 rounded-2xl p-5 shadow-md">
-          <h5 className="text-xs tracking-wider uppercase text-gray-400 font-bold mb-1">
-            Remaining Budget
-          </h5>
-          <p className="text-3xl font-black text-[#34d399]">
+
+        <div className="glass-card p-5 space-y-1">
+          <div className="flex items-center justify-between text-white/40">
+            <span className="text-[11px] font-bold uppercase tracking-wider">Purse Remaining</span>
+            <Coins className="w-4 h-4 text-emerald-400" />
+          </div>
+          <p className="text-3xl font-black text-emerald-400">
             {formatPts(team.budget)}
           </p>
         </div>
-        <div className="bg-[#374151] border border-gray-700/60 rounded-2xl p-5 shadow-md">
-          <h5 className="text-xs tracking-wider uppercase text-gray-400 font-bold mb-1">
-            Highest Bid
-          </h5>
+
+        <div className="glass-card p-5 space-y-1">
+          <div className="flex items-center justify-between text-white/40">
+            <span className="text-[11px] font-bold uppercase tracking-wider">Top Bid Amount</span>
+            <Trophy className="w-4 h-4 text-amber-400" />
+          </div>
           <p className="text-3xl font-black text-white">
             {formatPts(highestBid)}
           </p>
         </div>
       </div>
-      <div className="bg-[#374151]/70 border border-gray-700/60 rounded-2xl p-5 mb-10">
-        <h5 className="text-xs tracking-wider uppercase text-gray-400 font-bold mb-3">
-          Category Breakdown
+
+      {/* Category Breakdown Chips */}
+      <div className="glass-card p-5">
+        <h5 className="text-[11px] font-bold uppercase tracking-wider text-white/50 mb-3">
+          Squad Composition
         </h5>
-        {Object.keys(categoryBreakdown).length === 0 && (
-          <p className="text-sm text-gray-400">No players found.</p>
-        )}
-        <ul className="flex flex-wrap gap-3 text-sm">
-          {Object.entries(categoryBreakdown).map(([cat, count]) => (
-            <li
-              key={cat}
-              className="px-3.5 py-1.5 rounded-full bg-gray-900 border border-gray-700 text-white flex items-center gap-2"
-            >
-              <span className="text-[#34d399] font-black text-sm">{count}</span>
-              <span className="uppercase tracking-wide text-xs text-gray-300 font-bold">
-                {cat}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <h3 className="text-xl font-bold text-white mb-4 tracking-wide">
-        Players ({teamPlayers.length})
-      </h3>
-      {/* Single column on mobile for full-width rows */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {teamPlayers.map((player) => {
-          const isCaptain = player.isCaptain;
-          return (
-            <div
-              key={player._id}
-              className={`relative w-full flex items-center gap-4 sm:gap-5 bg-[#374151] border rounded-2xl p-4 transition-all duration-200 shadow-md ${
-                isCaptain
-                  ? "border-[#facc15] ring-1 ring-[#facc15]"
-                  : "border-gray-700/60 hover:border-gray-500"
-              }`}
-            >
-              {isCaptain && (
-                <span className="absolute -top-3 -left-3 bg-[#facc15] text-black border border-black text-xs font-black px-2.5 py-0.5 rounded-full shadow-md">
-                  C
-                </span>
-              )}
-              <Link
-                to={`/player/${player._id}`}
-                className="w-16 h-24 rounded-xl overflow-hidden bg-gray-900 flex-shrink-0 ring-1 ring-gray-700 focus:outline-none focus:ring-2 focus:ring-[#60a5fa]"
+        {Object.keys(categoryBreakdown).length === 0 ? (
+          <p className="text-xs text-white/40">No players acquired yet.</p>
+        ) : (
+          <ul className="flex flex-wrap gap-2.5">
+            {Object.entries(categoryBreakdown).map(([cat, count]) => (
+              <li
+                key={cat}
+                className="px-3.5 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-white flex items-center gap-2 text-xs font-semibold"
               >
-                <img
-                  src={player.image}
-                  alt={player.name}
-                  className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
-                  loading="lazy"
-                />
-              </Link>
-              <div className="flex-1 min-w-0">
-                <h4 className="text-base sm:text-lg font-bold truncate tracking-wide">
-                  <Link
-                    to={`/player/${player._id}`}
-                    className="text-[#60a5fa] hover:text-[#93c5fd] focus:outline-none rounded-sm"
-                  >
-                    {player.name}
-                  </Link>
-                </h4>
-                <div className="text-xs sm:text-sm text-gray-300 mt-1 flex flex-wrap gap-2 leading-relaxed">
-                  <span className="text-white font-bold uppercase tracking-wider text-[11px] px-2 py-0.5 rounded bg-gray-800 border border-gray-700">
-                    {player.category}
+                <span className="text-emerald-400 font-extrabold">{count}</span>
+                <span className="text-white/70 uppercase tracking-wider text-[11px]">{cat}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Players List Grid */}
+      <div>
+        <h3 className="text-lg font-bold text-white mb-4 tracking-wide">
+          Roster ({teamPlayers.length})
+        </h3>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {teamPlayers.map((player) => {
+            const isCaptain = player.isCaptain;
+            return (
+              <div
+                key={player._id}
+                className={`glass-card p-4 flex items-center gap-4 group ${
+                  isCaptain ? "border-amber-400/40 shadow-[0_0_20px_rgba(250,204,21,0.15)]" : ""
+                }`}
+              >
+                {isCaptain && (
+                  <span className="absolute -top-2.5 -left-2.5 bg-gradient-to-r from-amber-400 to-orange-400 text-slate-950 border border-black text-[10px] font-black px-2 py-0.5 rounded-full shadow-md">
+                    CAPTAIN
                   </span>
-                  {player.year && (
-                    <>
-                      <span className="text-gray-500">•</span>
-                      <span className="text-gray-300 font-medium">
+                )}
+
+                <Link
+                  to={`/player/${player._id}`}
+                  className="w-14 h-20 sm:w-16 sm:h-22 rounded-xl overflow-hidden bg-black/40 flex-shrink-0 border border-white/10 group-hover:border-cyan-400/40 transition-colors"
+                >
+                  <img
+                    src={player.image}
+                    alt={player.name}
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    loading="lazy"
+                    onError={(e) => {
+                      e.target.src = `https://via.placeholder.com/150x200?text=${encodeURIComponent(player.name)}`;
+                    }}
+                  />
+                </Link>
+
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-sm sm:text-base font-bold truncate tracking-wide text-white group-hover:text-cyan-300 transition-colors">
+                    <Link to={`/player/${player._id}`}>
+                      {player.name}
+                    </Link>
+                  </h4>
+                  <div className="text-xs text-white/50 mt-1 flex flex-wrap items-center gap-1.5 leading-none">
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/[0.06] border border-white/10 text-white/80">
+                      {player.category}
+                    </span>
+                    {player.year && (
+                      <span className="text-[11px] text-white/40">
                         {formatAcademicYear(player.year)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="text-right flex flex-col items-end flex-shrink-0">
+                  {isCaptain ? (
+                    <span className="text-xs font-extrabold text-amber-400 tracking-wide">
+                      Retained
+                    </span>
+                  ) : (
+                    <>
+                      <span className="text-base sm:text-lg font-black text-emerald-400 tracking-tight">
+                        {formatPts(player.finalBidPrice)}
+                      </span>
+                      <span className="text-[9px] uppercase font-bold text-emerald-300/60 tracking-wider">
+                        FINAL BID
                       </span>
                     </>
                   )}
                 </div>
               </div>
-              <div className="text-right flex flex-col items-end">
-                {isCaptain ? (
-                  <>
-                    <span className="text-xs sm:text-sm font-bold text-[#facc15] tracking-wide">
-                      Captain
-                    </span>
-                    <span className="mt-0.5 text-[10px] sm:text-[11px] uppercase text-gray-400 font-semibold tracking-wider">
-                      Retained
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className="text-lg sm:text-xl font-black text-[#34d399] tracking-wide">
-                      {formatPts(player.finalBidPrice)}
-                    </span>
-                    <span className="mt-0.5 text-[10px] sm:text-[11px] uppercase text-[#10b981] font-extrabold tracking-wider">
-                      BID
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );

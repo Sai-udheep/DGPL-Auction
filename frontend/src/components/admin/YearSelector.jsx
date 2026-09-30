@@ -1,24 +1,23 @@
-import React from "react";
+﻿import React from "react";
 
-// YearSelector dumb component
 export default function YearSelector({
   yearOptions = [],
   selectedYear,
   onSelectYear,
 }) {
   return (
-    <div className="w-full flex flex-wrap gap-2 mb-8">
-      <div className="inline-flex bg-black shadow-lg rounded-xl p-1 gap-1">
+    <div className="w-full flex flex-wrap gap-2 mb-6">
+      <div className="glass-pill-container p-1.5 inline-flex gap-1.5">
         {yearOptions.map((opt) => {
           const active = selectedYear === opt.value;
           return (
             <button
               key={opt.value}
               onClick={() => onSelectYear && onSelectYear(opt.value)}
-              className={`px-5 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all duration-200 focus:outline-none ${
+              className={`px-5 py-2 rounded-full font-bold text-xs transition-all duration-200 focus:outline-none cursor-pointer ${
                 active
-                  ? "bg-[#facc15] text-black font-extrabold shadow-md"
-                  : "bg-black text-white hover:bg-gray-900"
+                  ? "bg-gradient-to-r from-amber-500/25 to-orange-500/25 text-white border border-amber-400/40 shadow-[0_0_16px_rgba(234,118,63,0.25)]"
+                  : "text-white/60 hover:text-white hover:bg-white/[0.04] border border-transparent"
               }`}
               type="button"
             >
