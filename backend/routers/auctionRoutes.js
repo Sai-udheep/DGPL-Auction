@@ -1,8 +1,24 @@
-const express = require('express');
+﻿const express = require('express');
 const authController = require('../controllers/authController');
 const auctionController = require('../controllers/auctionController');
 
 const router = express.Router();
+
+router.get('/status', auctionController.getAuctionStatus);
+
+router.post(
+  '/status',
+  authController.protect,
+  authController.restrictTo('admin'),
+  auctionController.setAuctionStatus
+);
+
+router.post(
+  '/reset',
+  authController.protect,
+  authController.restrictTo('admin'),
+  auctionController.resetAuction
+);
 
 router.post(
   '/start',

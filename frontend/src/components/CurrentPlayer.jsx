@@ -3,7 +3,7 @@ import { useAuth } from "../context/authContextCore";
 import { useSocket } from "../context/useSocket";
 import { formatAcademicYear } from "../utils/formatters";
 import CurrentPlayerSkeleton from "./CurrentPlayerSkeleton";
-import { Flame, Coins, Shield, Clock } from "lucide-react";
+import { Clock, Radio, Sparkles, ShieldAlert } from "lucide-react";
 
 const BidErrorListener = ({ socket }) => {
   React.useEffect(() => {
@@ -17,17 +17,16 @@ const BidErrorListener = ({ socket }) => {
   return null;
 };
 
-const CurrentPlayer = ({ player: livePlayer, teams = [] }) => {
+const CurrentPlayer = ({ player: livePlayer, isAuctionActive = false, teams = [] }) => {
   const { isAuthenticated, user } = useAuth();
   const { socket } = useSocket() || {};
-  const [loading, setLoading] = useState(!livePlayer);
+  const [loading, setLoading] = useState(!livePlayer && isAuctionActive);
 
   const player = livePlayer;
 
   useEffect(() => {
-    if (livePlayer) setLoading(false);
-    else setLoading(false);
-  }, [livePlayer]);
+    setLoading(false);
+  }, [livePlayer, isAuctionActive]);
 
   const sortedBids = useMemo(() => {
     if (!player?.bidHistory) return [];
@@ -38,20 +37,66 @@ const CurrentPlayer = ({ player: livePlayer, teams = [] }) => {
 
   if (loading) return <CurrentPlayerSkeleton />;
 
-  if (!player) {
+  // 1. If auction is not currently active / paused
+  if (!isAuctionActive && !player) {
     return (
-      <div className="glass-card p-12 text-center max-w-lg w-full flex flex-col items-center justify-center space-y-4">
-        <div className="w-12 h-12 rounded-full bg-white/[0.05] border border-white/10 flex items-center justify-center text-white/40 animate-pulse">
-          <Clock className="w-6 h-6 text-amber-400/60" />
+      <div className="glass-card p-10 sm:p-12 text-center max-w-lg w-full flex flex-col items-center justify-center space-y-5 shadow-2xl border-white/10">
+        <div className="relative">
+          <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-amber-500/20 via-orange-500/15 to-transparent border border-amber-400/30 flex items-center justify-center text-amber-400 shadow-inner">
+            <Radio className="w-8 h-8" />
+          </div>
+          <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-400/60 animate-ping" />
         </div>
+
         <div>
-          <h3 className="text-lg font-bold text-white tracking-wide">Waiting for Next Player</h3>
-          <p className="text-xs text-white/50 mt-1">The auctioneer will begin the next bidding round shortly.</p>
+          <span className="text-[10px] font-extrabold uppercase tracking-widest px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 inline-block mb-2">
+            SESSION INACTIVE
+          </span>
+          <h3 className="text-xl sm:text-2xl font-black text-white tracking-wide font-brand">
+            Auction Not In Session
+          </h3>
+          <p className="text-xs text-white/55 mt-2 leading-relaxed max-w-sm mx-auto font-medium">
+            The live bidding arena is currently on hold. Tournament organizers will open the auction session shortly.
+          </p>
+        </div>
+
+        <div className="pt-2 w-full max-w-xs">
+          <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/[0.06] text-[11px] text-white/50 flex items-center justify-center gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span>Stay on this page for live automatic updates</span>
+          </div>
         </div>
       </div>
     );
   }
 
+  // 2. If auction is active, but between players
+  if (!player) {
+    return (
+      <div className="glass-card p-10 sm:p-12 text-center max-w-lg w-full flex flex-col items-center justify-center space-y-5 shadow-2xl border-cyan-500/20 shadow-[0_0_40px_rgba(56,189,248,0.12)]">
+        <div className="relative">
+          <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-cyan-500/20 via-blue-500/15 to-transparent border border-cyan-400/30 flex items-center justify-center text-cyan-400 shadow-inner">
+            <Clock className="w-8 h-8 animate-pulse" />
+          </div>
+          <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-cyan-400 animate-ping" />
+        </div>
+
+        <div>
+          <span className="text-[10px] font-extrabold uppercase tracking-widest px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 inline-block mb-2">
+            LIVE SESSION ACTIVE
+          </span>
+          <h3 className="text-xl sm:text-2xl font-black text-white tracking-wide font-brand">
+            Waiting for Next Player
+          </h3>
+          <p className="text-xs text-white/55 mt-2 leading-relaxed max-w-sm mx-auto font-medium">
+            The auction is live! The auctioneer is preparing the next player for the bidding stage.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Active player in auction
   const { name, image, category, year } = player;
   const currentBidRaw = player.finalBidPrice ?? player.basePrice ?? null;
   const currentBid = currentBidRaw != null ? Number(currentBidRaw) : null;

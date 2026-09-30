@@ -17,6 +17,7 @@ import { API_URL } from "./config";
 function App() {
   const [activeTab, setActiveTab] = useState("live");
   const [currentPlayer, setCurrentPlayer] = useState(null);
+  const [isAuctionActive, setIsAuctionActive] = useState(false);
   const [teams, setTeams] = useState([]);
   const [recentlySold, setRecentlySold] = useState(null);
   const [recentlyUnsold, setRecentlyUnsold] = useState(null);
@@ -33,9 +34,11 @@ function App() {
       setRecentlySold(null);
       setRecentlyUnsold(null);
       setCurrentPlayer(player);
+      setIsAuctionActive(true);
     };
 
     const handleNewBid = (payload) => {
+      setIsAuctionActive(true);
       setCurrentPlayer((prev) => {
         if (!prev) {
           if (payload.player) return payload.player;
@@ -117,6 +120,25 @@ function App() {
       }
     };
 
+    const handleAuctionStatusChanged = (payload) => {
+      setIsAuctionActive(!!payload?.isAuctionActive);
+    };
+
+    const handleAuctionReset = () => {
+      setCurrentPlayer(null);
+      setRecentlySold(null);
+      setRecentlyUnsold(null);
+      setIsAuctionActive(false);
+      const id = Date.now();
+      setToasts((prev) => [
+        ...prev,
+        { id, message: "The auction session has been reset.", type: "info" },
+      ]);
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 5000);
+    };
+
     const handleBidError = (payload) => {
       const msg = payload?.message || "Bid failed";
       const id = Date.now() + Math.random();
@@ -133,6 +155,8 @@ function App() {
     socket.on("server:bid_error", handleBidError);
     socket.on("player_unsold", handlePlayerUnsold);
     socket.on("server:player_unsold", handlePlayerUnsold);
+    socket.on("server:auction_status_changed", handleAuctionStatusChanged);
+    socket.on("server:auction_reset", handleAuctionReset);
 
     return () => {
       socket.off("new_player", handleNewPlayer);
@@ -142,30 +166,41 @@ function App() {
       socket.off("server:bid_error", handleBidError);
       socket.off("player_unsold", handlePlayerUnsold);
       socket.off("server:player_unsold", handlePlayerUnsold);
+      socket.off("server:auction_status_changed", handleAuctionStatusChanged);
+      socket.off("server:auction_reset", handleAuctionReset);
     };
   }, [socket, isConnected]);
 
-  // Load current auction player
+  // Load current auction player & global auction status
   useEffect(() => {
     let ignore = false;
-    const loadCurrent = async () => {
+    const loadState = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/v1/auction/current`);
-        if (!res.ok) return;
-        const data = await res.json();
-        const incoming = data?.data?.player;
-        if (!ignore && incoming) {
-          setCurrentPlayer((prev) => {
-            if (!prev) return incoming;
-            if (prev._id !== incoming._id) return incoming;
-            return prev;
-          });
+        const [currRes, statusRes] = await Promise.all([
+          fetch(`${API_URL}/api/v1/auction/current`),
+          fetch(`${API_URL}/api/v1/auction/status`).catch(() => null),
+        ]);
+
+        if (currRes.ok) {
+          const currData = await currRes.json();
+          const incoming = currData?.data?.player;
+          if (!ignore && incoming) {
+            setCurrentPlayer(incoming);
+            setIsAuctionActive(true);
+          }
+        }
+
+        if (statusRes && statusRes.ok) {
+          const statusData = await statusRes.json();
+          if (!ignore && typeof statusData?.data?.isAuctionActive === "boolean") {
+            setIsAuctionActive(statusData.data.isAuctionActive);
+          }
         }
       } catch {
         /* ignore */
       }
     };
-    loadCurrent();
+    loadState();
     return () => {
       ignore = true;
     };
@@ -237,6 +272,7 @@ function App() {
                         <CurrentPlayer
                           key={currentPlayer?._id || "no-player"}
                           player={currentPlayer || null}
+                          isAuctionActive={isAuctionActive}
                           teams={teams}
                         />
                       )}
