@@ -8,18 +8,21 @@ const AppError = require('../utils/appError');
 // 1. GET GLOBAL AUCTION STATUS
 exports.getAuctionStatus = catchAsync(async (req, res, next) => {
   let isAuctionActive = false;
+  let currentPlayerId = null;
   try {
     const cfg = await AppConfig.findOne();
     if (cfg) {
       isAuctionActive = !!cfg.isAuctionActive;
     }
+    const inAuction = await Player.findOne({ status: 'in_auction' }).select('_id');
+    if (inAuction) currentPlayerId = inAuction._id;
   } catch (err) {
     console.error('[Auction] Error reading AppConfig in getAuctionStatus:', err);
   }
 
   res.status(200).json({
     status: 'success',
-    data: { isAuctionActive },
+    data: { isAuctionActive, currentPlayerId },
   });
 });
 
@@ -61,6 +64,10 @@ exports.startAuction = catchAsync(async (req, res, next) => {
   if (player.status === 'sold') {
     return next(new AppError('Player already sold', 400));
   }
+  // Don't allow starting auction for a permanently unsold player
+  if (player.status === 'unsold' && player.markedUnsold) {
+    return next(new AppError('This player has been permanently marked unsold and cannot be re-auctioned.', 400));
+  }
 
   // Ensure global session is active when a player is started
   try {
@@ -73,13 +80,15 @@ exports.startAuction = catchAsync(async (req, res, next) => {
     console.error('[Auction] Error updating AppConfig in startAuction:', err);
   }
 
-  // Clear any existing in_auction player to unsold
+  // Clear any existing in_auction player back to unsold (not permanent)
   await Player.updateMany(
     { status: 'in_auction' },
-    { $set: { status: 'unsold' } }
+    { $set: { status: 'unsold', bidHistory: [] } }
   );
 
   player.status = 'in_auction';
+  player.bidHistory = [];
+  player.markedUnsold = false;
   await player.save();
 
   const populated = await Player.findById(player._id)
@@ -97,7 +106,7 @@ exports.startAuction = catchAsync(async (req, res, next) => {
     if (plain.team && plain.team.name) plain.teamName = plain.team.name;
     console.log('[Auction] Emitting new_player', plain.name, plain._id);
     req.io.emit('new_player', plain);
-    req.io.emit('server:auction_status_changed', { isAuctionActive: true });
+    req.io.emit('server:auction_status_changed', { isAuctionActive: true, currentPlayerId: plain._id });
   }
 
   res.status(200).json({
@@ -142,7 +151,7 @@ exports.sellPlayer = catchAsync(async (req, res, next) => {
     return next(new AppError('Player is not currently in auction', 400));
   }
 
-  // Auto-derive team and winning bid if not explicitly passed
+  // Auto-derive team and winning bid from latest bid history if not passed
   if (!teamId || finalBid == null) {
     if (Array.isArray(player.bidHistory) && player.bidHistory.length > 0) {
       const topBid = player.bidHistory[player.bidHistory.length - 1];
@@ -188,6 +197,7 @@ exports.sellPlayer = catchAsync(async (req, res, next) => {
         status: 'sold',
         team: updatedTeam._id,
         finalBidPrice: finalBid,
+        markedUnsold: false,
       },
     },
     { new: true }
@@ -211,6 +221,17 @@ exports.sellPlayer = catchAsync(async (req, res, next) => {
     playerPlain.teamName = playerPlain.team.name;
   }
 
+  // Mark auction session inactive now that player is sold
+  try {
+    await AppConfig.findOneAndUpdate(
+      {},
+      { $set: { isAuctionActive: false } },
+      { upsert: true }
+    );
+  } catch (e) {
+    console.error('[Auction] Could not update AppConfig after sell:', e);
+  }
+
   if (req.io) {
     console.log(
       '[Auction] Emitting server:player_sold and player_sold',
@@ -227,6 +248,7 @@ exports.sellPlayer = catchAsync(async (req, res, next) => {
     };
     req.io.emit('server:player_sold', soldPayload);
     req.io.emit('player_sold', soldPayload);
+    req.io.emit('server:auction_status_changed', { isAuctionActive: false, currentPlayerId: null });
   }
 
   res.status(200).json({
@@ -238,7 +260,7 @@ exports.sellPlayer = catchAsync(async (req, res, next) => {
   });
 });
 
-// 6. MARK PLAYER UNSOLD
+// 6. MARK PLAYER UNSOLD (permanently — won't re-enter auction pool)
 exports.markPlayerUnsold = catchAsync(async (req, res, next) => {
   const { playerId } = req.body;
   if (!playerId) return next(new AppError('playerId is required', 400));
@@ -248,16 +270,13 @@ exports.markPlayerUnsold = catchAsync(async (req, res, next) => {
   if (player.status !== 'in_auction') {
     return next(new AppError('Player is not currently in auction', 400));
   }
-  if (Array.isArray(player.bidHistory) && player.bidHistory.length > 0) {
-    return next(
-      new AppError(
-        'Cannot mark unsold: bids were already placed. Sell player instead.',
-        400
-      )
-    );
-  }
 
+  // Mark as permanently unsold — clear bid history since they'll be skipped
   player.status = 'unsold';
+  player.markedUnsold = true;
+  player.bidHistory = [];
+  player.team = null;
+  player.finalBidPrice = null;
   await player.save();
 
   const populated = await Player.findById(player._id)
@@ -273,6 +292,17 @@ exports.markPlayerUnsold = catchAsync(async (req, res, next) => {
   }
   if (plain.team && plain.team.name) plain.teamName = plain.team.name;
 
+  // Mark auction inactive
+  try {
+    await AppConfig.findOneAndUpdate(
+      {},
+      { $set: { isAuctionActive: false } },
+      { upsert: true }
+    );
+  } catch (e) {
+    console.error('[Auction] Could not update AppConfig after unsold:', e);
+  }
+
   if (req.io) {
     console.log(
       '[Auction] Emitting server:player_unsold and player_unsold',
@@ -280,6 +310,7 @@ exports.markPlayerUnsold = catchAsync(async (req, res, next) => {
     );
     req.io.emit('server:player_unsold', plain);
     req.io.emit('player_unsold', plain);
+    req.io.emit('server:auction_status_changed', { isAuctionActive: false, currentPlayerId: null });
   }
 
   res.status(200).json({
@@ -291,7 +322,7 @@ exports.markPlayerUnsold = catchAsync(async (req, res, next) => {
 // 7. RESET ENTIRE AUCTION
 exports.resetAuction = catchAsync(async (req, res, next) => {
   try {
-    // 1. Reset non-captain players to unsold with clean bidHistory
+    // 1. Reset ALL non-captain players to available (unsold, not permanently marked)
     await Player.updateMany(
       { isCaptain: { $ne: true } },
       {
@@ -300,11 +331,12 @@ exports.resetAuction = catchAsync(async (req, res, next) => {
           team: null,
           finalBidPrice: null,
           bidHistory: [],
+          markedUnsold: false,
         },
       }
     );
 
-    // 2. Clear in_auction state on any captain (if any)
+    // 2. Restore any captain stuck in in_auction back to sold
     await Player.updateMany(
       { isCaptain: true, status: 'in_auction' },
       { $set: { status: 'sold' } }
@@ -337,7 +369,7 @@ exports.resetAuction = catchAsync(async (req, res, next) => {
   if (req.io) {
     console.log('[Auction] Emitting server:auction_reset');
     req.io.emit('server:auction_reset', { message: 'Auction has been reset' });
-    req.io.emit('server:auction_status_changed', { isAuctionActive: false });
+    req.io.emit('server:auction_status_changed', { isAuctionActive: false, currentPlayerId: null });
   }
 
   res.status(200).json({

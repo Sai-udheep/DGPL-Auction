@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+﻿const mongoose = require('mongoose');
 
 const playerSchema = new mongoose.Schema({
   name: {
@@ -42,6 +42,11 @@ const playerSchema = new mongoose.Schema({
     },
     default: 'unsold',
   },
+  // When true, this player was explicitly marked unsold and should not be re-auctioned
+  markedUnsold: {
+    type: Boolean,
+    default: false,
+  },
   team: {
     type: mongoose.Schema.ObjectId,
     ref: 'Team',
@@ -71,6 +76,7 @@ const playerSchema = new mongoose.Schema({
 
 // Index to optimize queries filtering by status (e.g., unsold/in_auction)
 playerSchema.index({ status: 1 });
+playerSchema.index({ markedUnsold: 1 });
 
 const Player = mongoose.model('Player', playerSchema);
 module.exports = Player;
