@@ -14,13 +14,15 @@ import {
   Upload,
   Trash2,
   X,
+  Users,
+  Gavel,
 } from "lucide-react";
 
 export default function AdminPage() {
   const { token } = useAuth();
   const { socket, isConnected } = useSocket();
   const [players, setPlayers] = useState([]);
-  const [selectedYear, setSelectedYear] = useState(4); // Default to 4th year
+  const [selectedYear, setSelectedYear] = useState(4);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [auctionMessage, setAuctionMessage] = useState(null);
@@ -28,7 +30,8 @@ export default function AdminPage() {
   const [deletingPlayerId, setDeletingPlayerId] = useState(null);
 
   // Master auction session state
-  const [isAuctionActive, setIsAuctionActive] = useState(true);
+  const [isAuctionActive, setIsAuctionActive] = useState(false);
+  const [currentAuctionPlayerId, setCurrentAuctionPlayerId] = useState(null);
   const [statusToggling, setStatusToggling] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -68,7 +71,7 @@ export default function AdminPage() {
     }
   }, [selectedYear]);
 
-  // Fetch initial auction status
+  // Fetch initial auction status (includes currentPlayerId)
   useEffect(() => {
     let ignore = false;
     const fetchStatus = async () => {
@@ -76,8 +79,15 @@ export default function AdminPage() {
         const res = await fetch(`${API_URL}/api/v1/auction/status`);
         if (res.ok) {
           const data = await res.json();
-          if (!ignore && data && data.data && typeof data.data.isAuctionActive === "boolean") {
-            setIsAuctionActive(data.data.isAuctionActive);
+          if (!ignore && data && data.data) {
+            if (typeof data.data.isAuctionActive === "boolean") {
+              setIsAuctionActive(data.data.isAuctionActive);
+            }
+            if (data.data.currentPlayerId) {
+              setCurrentAuctionPlayerId(String(data.data.currentPlayerId));
+            } else {
+              setCurrentAuctionPlayerId(null);
+            }
           }
         }
       } catch {
@@ -90,7 +100,7 @@ export default function AdminPage() {
     };
   }, []);
 
-  // Real-time socket sync for status & reset events
+  // Real-time socket sync
   useEffect(() => {
     if (!socket || !isConnected) return;
 
@@ -98,19 +108,97 @@ export default function AdminPage() {
       if (payload && typeof payload.isAuctionActive === "boolean") {
         setIsAuctionActive(payload.isAuctionActive);
       }
+      if ("currentPlayerId" in payload) {
+        setCurrentAuctionPlayerId(
+          payload.currentPlayerId ? String(payload.currentPlayerId) : null
+        );
+      }
     };
 
     const handleReset = () => {
       setIsAuctionActive(false);
+      setCurrentAuctionPlayerId(null);
       fetchPlayers();
+    };
+
+    // When a new player enters auction — update local state live
+    const handleNewPlayer = (player) => {
+      if (!player) return;
+      setCurrentAuctionPlayerId(String(player._id));
+      setIsAuctionActive(true);
+      setPlayers((prev) =>
+        prev.map((p) => {
+          if (String(p._id) === String(player._id)) {
+            return { ...p, ...player, status: "in_auction" };
+          }
+          // Reset other in_auction players back to unsold
+          if (p.status === "in_auction") {
+            return { ...p, status: "unsold", bidHistory: [] };
+          }
+          return p;
+        })
+      );
+    };
+
+    // When a bid is placed — update bidHistory live on admin view
+    const handleBidPlaced = (payload) => {
+      if (!payload) return;
+      const { player } = payload;
+      if (!player) return;
+      setPlayers((prev) =>
+        prev.map((p) =>
+          String(p._id) === String(player._id) ? { ...p, ...player } : p
+        )
+      );
+    };
+
+    // When player sold
+    const handlePlayerSold = (payload) => {
+      if (!payload || !payload.player) return;
+      const { player } = payload;
+      setCurrentAuctionPlayerId(null);
+      setIsAuctionActive(false);
+      setPlayers((prev) =>
+        prev.map((p) =>
+          String(p._id) === String(player._id)
+            ? { ...p, ...player, status: "sold" }
+            : p
+        )
+      );
+    };
+
+    // When player marked unsold
+    const handlePlayerUnsold = (player) => {
+      if (!player) return;
+      setCurrentAuctionPlayerId(null);
+      setIsAuctionActive(false);
+      setPlayers((prev) =>
+        prev.map((p) =>
+          String(p._id) === String(player._id)
+            ? { ...p, ...player, status: "unsold", markedUnsold: true }
+            : p
+        )
+      );
     };
 
     socket.on("server:auction_status_changed", handleStatusChanged);
     socket.on("server:auction_reset", handleReset);
+    socket.on("new_player", handleNewPlayer);
+    socket.on("bid_placed", handleBidPlaced);
+    socket.on("server:player_sold", handlePlayerSold);
+    socket.on("player_sold", handlePlayerSold);
+    socket.on("server:player_unsold", handlePlayerUnsold);
+    socket.on("player_unsold", handlePlayerUnsold);
 
     return () => {
       socket.off("server:auction_status_changed", handleStatusChanged);
       socket.off("server:auction_reset", handleReset);
+      socket.off("new_player", handleNewPlayer);
+      socket.off("bid_placed", handleBidPlaced);
+      socket.off("server:player_sold", handlePlayerSold);
+      socket.off("player_sold", handlePlayerSold);
+      socket.off("server:player_unsold", handlePlayerUnsold);
+      socket.off("player_unsold", handlePlayerUnsold);
     };
   }, [socket, isConnected, fetchPlayers]);
 
@@ -118,7 +206,7 @@ export default function AdminPage() {
     fetchPlayers();
   }, [fetchPlayers]);
 
-  // Toggle Auction Session Active / Inactive
+  // Toggle Auction Session Active / Inactive (Pause/Resume global session)
   const handleToggleAuctionStatus = async () => {
     setStatusToggling(true);
     setAuctionMessage(null);
@@ -140,8 +228,8 @@ export default function AdminPage() {
       setIsAuctionActive(data.data.isAuctionActive);
       setAuctionMessage(
         nextStatus
-          ? "Auction session started! Viewers can now see live bidding stage."
-          : "Auction session paused. Viewers will see waiting stage."
+          ? "Auction session resumed! Live bidding is active."
+          : "Auction session paused. Viewers will see the waiting stage."
       );
     } catch (err) {
       setAuctionMessage(err.message || "Failed to update auction status");
@@ -167,7 +255,10 @@ export default function AdminPage() {
         throw new Error(errorData.message || "Failed to reset auction");
       }
       setIsAuctionActive(false);
-      setAuctionMessage("Auction successfully reset! All non-captain players unsold, rosters cleared, budgets restored to 100 Pts.");
+      setCurrentAuctionPlayerId(null);
+      setAuctionMessage(
+        "Auction successfully reset! All non-captain players unsold, rosters cleared, budgets restored to 100 Pts."
+      );
       setIsResetConfirmOpen(false);
       fetchPlayers();
     } catch (err) {
@@ -217,7 +308,10 @@ export default function AdminPage() {
         throw new Error(errData.message || "Failed to delete all players");
       }
       const data = await res.json();
-      setAuctionMessage(data.message || "All non-captain players deleted and team rosters cleared.");
+      setAuctionMessage(
+        data.message ||
+          "All non-captain players deleted and team rosters cleared."
+      );
       setIsDeleteAllConfirmOpen(false);
       fetchPlayers();
     } catch (err) {
@@ -244,9 +338,14 @@ export default function AdminPage() {
         throw new Error(errData.message || "Failed to start auction");
       }
       setIsAuctionActive(true);
+      setCurrentAuctionPlayerId(playerId);
       setAuctionMessage("Player is now in auction!");
       setPlayers((prev) =>
-        prev.map((p) => (p._id === playerId ? { ...p, status: "in_auction" } : p))
+        prev.map((p) => {
+          if (p._id === playerId) return { ...p, status: "in_auction", bidHistory: [] };
+          if (p.status === "in_auction") return { ...p, status: "unsold", bidHistory: [] };
+          return p;
+        })
       );
     } catch (err) {
       setAuctionMessage(err.message || "Failed to start auction for player");
@@ -272,15 +371,17 @@ export default function AdminPage() {
         throw new Error(errData.message || "Failed to sell player");
       }
       const resData = await res.json();
-      const winningTeamId = resData?.data?.player?.team;
+      const soldPlayer = resData?.data?.player;
+      setCurrentAuctionPlayerId(null);
+      setIsAuctionActive(false);
       setAuctionMessage("Player successfully sold!");
       setPlayers((prev) =>
         prev.map((p) =>
           p._id === playerId
             ? {
                 ...p,
+                ...(soldPlayer || {}),
                 status: "sold",
-                team: winningTeamId,
               }
             : p
         )
@@ -306,90 +407,131 @@ export default function AdminPage() {
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || "Failed to mark unsold");
+        throw new Error(errData.message || "Failed to mark player unsold");
       }
-      setAuctionMessage("Player marked unsold.");
+      setCurrentAuctionPlayerId(null);
+      setIsAuctionActive(false);
+      setAuctionMessage("Player marked as unsold.");
       setPlayers((prev) =>
-        prev.map((p) => (p._id === playerId ? { ...p, status: "unsold" } : p))
+        prev.map((p) =>
+          p._id === playerId
+            ? { ...p, status: "unsold", markedUnsold: true, bidHistory: [] }
+            : p
+        )
       );
     } catch (err) {
-      setAuctionMessage(err.message || "Failed to mark unsold");
+      setAuctionMessage(err.message || "Failed to mark player as unsold");
     } finally {
       setActionLoadingId(null);
     }
   };
 
+  // Derive player pools for the selected year
+  const availablePlayers = players.filter(
+    (p) => p.status === "unsold" && !p.markedUnsold
+  );
+  const unsoldPool = players.filter(
+    (p) => p.status === "unsold" && p.markedUnsold
+  );
+  const inAuctionPlayers = players.filter((p) => p.status === "in_auction");
+  const soldPlayers = players.filter((p) => p.status === "sold");
+
+  const nonSoldPlayers = players.filter((p) => p.status !== "sold");
+
   return (
-    <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-8 relative z-10 space-y-5 sm:space-y-8">
-      {/* Page Title & Bulk Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-wide font-brand">
-            Admin Control Center
-          </h1>
-          <p className="text-xs text-white/50 mt-1">
-            Master auction session controller, player stage initiator, and bulk data manager
-          </p>
-        </div>
-
-        {/* Top Quick Actions */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => setIsUploadModalOpen(true)}
-            className="glass-btn px-3 py-2 sm:px-3.5 sm:py-2 text-xs font-bold text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 flex items-center gap-1.5 cursor-pointer shadow-sm flex-1 sm:flex-initial justify-center"
-            type="button"
-          >
-            <Upload className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-            <span>Import CSV / JSON</span>
-          </button>
-
-          <button
-            onClick={() => setIsDeleteAllConfirmOpen(true)}
-            className="glass-btn px-3 py-2 sm:px-3.5 sm:py-2 text-xs font-bold text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/25 flex items-center gap-1.5 cursor-pointer flex-1 sm:flex-initial justify-center"
-            type="button"
-            title="Delete all non-captain players"
-          >
-            <Trash2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-            <span>Clear Pool</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Master Session Controls Bar */}
-      <div className="glass-card p-4 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-white/12 shadow-xl">
+    <div className="max-w-6xl mx-auto px-2 sm:px-4 pt-2 pb-10 space-y-4 sm:space-y-5">
+      {/* Page Header */}
+      <div className="glass-card p-4 sm:p-5 space-y-3.5">
         <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border shadow-inner shrink-0 ${
-            isAuctionActive
-              ? "bg-emerald-500/15 border-emerald-400/30 text-emerald-400"
-              : "bg-white/[0.04] border-white/10 text-white/40"
-          }`}>
-            <Radio className="w-5 h-5" />
+          <div className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 shrink-0">
+            <Radio className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${
-                isAuctionActive ? "bg-emerald-400 animate-ping" : "bg-white/30"
-              }`} />
-              <span className={`text-xs font-black uppercase tracking-wider ${
-                isAuctionActive ? "text-emerald-400" : "text-white/50"
-              }`}>
-                {isAuctionActive ? "Live Session Active" : "Session Inactive / Paused"}
-              </span>
-            </div>
-            <p className="text-[11px] text-white/40 mt-0.5">
-              {isAuctionActive
-                ? "Public viewers and captains see the live bidding stage"
-                : "Viewers see the 'Auction Not Active' waiting card"}
+          <div className="min-w-0">
+            <h2 className="text-sm sm:text-base font-black text-white tracking-wide">
+              Auction Control Panel
+            </h2>
+            <p className="text-[10px] sm:text-xs text-white/40 mt-0.5">
+              Manage players, control the auction flow, and track bids in
+              real-time.
             </p>
           </div>
         </div>
 
-        {/* Master Action Buttons */}
-        <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap w-full md:w-auto">
+        {/* Stats Row */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[
+            {
+              label: "Available",
+              value: availablePlayers.length,
+              color: "text-cyan-400",
+            },
+            {
+              label: "In Auction",
+              value: inAuctionPlayers.length,
+              color: "text-amber-400",
+            },
+            {
+              label: "Sold",
+              value: soldPlayers.length,
+              color: "text-emerald-400",
+            },
+            {
+              label: "Unsold Pool",
+              value: unsoldPool.length,
+              color: "text-rose-400",
+            },
+          ].map((s) => (
+            <div
+              key={s.label}
+              className="glass-card p-2.5 sm:p-3 text-center border-white/[0.07]"
+            >
+              <p className={`text-lg sm:text-2xl font-black ${s.color}`}>
+                {s.value}
+              </p>
+              <p className="text-[9px] sm:text-[10px] text-white/40 uppercase tracking-widest font-semibold mt-0.5">
+                {s.label}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {/* Action Buttons Row */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Upload CSV */}
+          <button
+            onClick={() => setIsUploadModalOpen(true)}
+            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/25 hover:border-cyan-500/45 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+            type="button"
+          >
+            <Upload className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+            <span>Upload Players</span>
+          </button>
+
+          {/* Delete All */}
+          <button
+            onClick={() => setIsDeleteAllConfirmOpen(true)}
+            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/25 hover:border-rose-500/45 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+            type="button"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+            <span>Clear All Players</span>
+          </button>
+
+          <div className="flex-1 hidden sm:block" />
+
+          {/* Auction In-Progress Banner (replaces Start when player is live) */}
+          {currentAuctionPlayerId && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold whitespace-nowrap">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0" />
+              Auction in progress
+            </div>
+          )}
+
+          {/* Pause / Resume Session */}
           <button
             onClick={handleToggleAuctionStatus}
             disabled={statusToggling}
-            className={`glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer flex-1 sm:flex-initial whitespace-nowrap ${
+            className={`glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
               isAuctionActive
                 ? "bg-white/[0.08] hover:bg-white/[0.14] text-white border-white/15"
                 : "bg-gradient-to-r from-emerald-500/25 to-teal-500/25 text-emerald-300 border-emerald-400/40 hover:from-emerald-500/35 hover:to-teal-500/35"
@@ -404,14 +546,15 @@ export default function AdminPage() {
             ) : (
               <>
                 <Play className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400 shrink-0" />
-                <span>Start Auction Session</span>
+                <span>Start Session</span>
               </>
             )}
           </button>
 
+          {/* Reset Auction */}
           <button
             onClick={() => setIsResetConfirmOpen(true)}
-            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/25 hover:border-rose-500/45 flex items-center justify-center gap-1.5 cursor-pointer flex-1 sm:flex-initial whitespace-nowrap"
+            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/25 hover:border-rose-500/45 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
             type="button"
           >
             <RotateCcw className="w-3.5 h-3.5 text-rose-400 shrink-0" />
@@ -465,29 +608,56 @@ export default function AdminPage() {
         </div>
       )}
 
-      {!loading &&
-        !error &&
-        selectedYear != null &&
-        players.filter((p) => p.status !== "sold").length === 0 && (
-          <div className="glass-card p-8 text-center text-white/50 text-xs">
-            No active or unsold players remaining for this academic year.
-          </div>
-        )}
+      {!loading && !error && selectedYear != null && (
+        <>
+          {/* Available + In Auction pool */}
+          {nonSoldPlayers.filter((p) => !p.markedUnsold).length === 0 &&
+          inAuctionPlayers.length === 0 ? (
+            <div className="glass-card p-8 text-center text-white/50 text-xs">
+              No available players remaining for this academic year.
+            </div>
+          ) : (
+            <PlayerTable
+              players={players.filter((p) => p.status !== "sold" && !p.markedUnsold)}
+              onStartAuction={handleStartAuction}
+              onSellPlayer={handleSellPlayer}
+              onMarkUnsold={handleMarkUnsold}
+              onDeletePlayer={handleDeletePlayer}
+              actionLoadingId={actionLoadingId}
+              deletingPlayerId={deletingPlayerId}
+              currentAuctionPlayerId={currentAuctionPlayerId}
+              tableTitle="Available Pool"
+            />
+          )}
 
-      {!loading &&
-        !error &&
-        selectedYear != null &&
-        players.filter((p) => p.status !== "sold").length > 0 && (
-          <PlayerTable
-            players={players}
-            onStartAuction={handleStartAuction}
-            onSellPlayer={handleSellPlayer}
-            onMarkUnsold={handleMarkUnsold}
-            onDeletePlayer={handleDeletePlayer}
-            actionLoadingId={actionLoadingId}
-            deletingPlayerId={deletingPlayerId}
-          />
-        )}
+          {/* Unsold Pool (permanently marked unsold) */}
+          {unsoldPool.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 px-1">
+                <div className="w-2 h-2 rounded-full bg-rose-400" />
+                <h3 className="text-xs font-bold text-rose-300 uppercase tracking-widest">
+                  Unsold Pool ({unsoldPool.length})
+                </h3>
+                <p className="text-[10px] text-white/30 ml-1">
+                  — These players won't re-enter the auction
+                </p>
+              </div>
+              <PlayerTable
+                players={unsoldPool}
+                onStartAuction={null}
+                onSellPlayer={null}
+                onMarkUnsold={null}
+                onDeletePlayer={handleDeletePlayer}
+                actionLoadingId={actionLoadingId}
+                deletingPlayerId={deletingPlayerId}
+                currentAuctionPlayerId={currentAuctionPlayerId}
+                isUnsoldPool={true}
+                tableTitle="Unsold Pool"
+              />
+            </div>
+          )}
+        </>
+      )}
 
       {/* CSV / JSON Upload Modal */}
       <CsvUploadModal
@@ -506,13 +676,20 @@ export default function AdminPage() {
                 <AlertTriangle className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-lg font-black text-white">Reset Entire Auction?</h3>
-                <p className="text-xs text-white/50">This action cannot be undone.</p>
+                <h3 className="text-lg font-black text-white">
+                  Reset Entire Auction?
+                </h3>
+                <p className="text-xs text-white/50">
+                  This action cannot be undone.
+                </p>
               </div>
             </div>
 
             <p className="text-xs text-white/70 leading-relaxed">
-              Resetting will clear all current bid histories, mark all auctioned non-captain players back to <strong>Unsold</strong>, and restore all team budgets to <strong>100 Points</strong>.
+              Resetting will clear all current bid histories, mark all
+              auctioned non-captain players back to{" "}
+              <strong>Available</strong>, and restore all team budgets to{" "}
+              <strong>100 Points</strong>.
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-2">
@@ -546,13 +723,17 @@ export default function AdminPage() {
                 <Trash2 className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-lg font-black text-white">Delete All Players?</h3>
+                <h3 className="text-lg font-black text-white">
+                  Delete All Players?
+                </h3>
                 <p className="text-xs text-white/50">Permanent pool wipe</p>
               </div>
             </div>
 
             <p className="text-xs text-white/70 leading-relaxed">
-              This will permanently delete <strong>all non-captain players</strong> from the database and reset team rosters. Captains will be preserved.
+              This will permanently delete{" "}
+              <strong>all non-captain players</strong> from the database and
+              reset team rosters. Captains will be preserved.
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-2">
