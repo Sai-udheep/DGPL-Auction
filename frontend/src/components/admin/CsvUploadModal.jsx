@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import {
   Upload,
   FileText,
@@ -8,6 +8,9 @@ import {
   AlertTriangle,
   Image as ImageIcon,
   Sparkles,
+  Download,
+  Copy,
+  Check,
 } from "lucide-react";
 import { API_URL } from "../../config";
 
@@ -19,8 +22,15 @@ export default function CsvUploadModal({ isOpen, onClose, token, onUploadSuccess
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;
+
+  const sampleCsv = `name,year,category,image,basePrice
+Rohit Sharma,4,Batsman,https://res.cloudinary.com/demo/image/upload/sample.jpg,2.0
+Jasprit Bumrah,3,Bowler,,1.5
+Hardik Pandya,2,All-Rounder,,1.0
+Rishabh Pant,1,Wicket-Keeper,,0.5`;
 
   const getAutoBasePrice = (year) => {
     const y = parseInt(year, 10);
@@ -29,6 +39,23 @@ export default function CsvUploadModal({ isOpen, onClose, token, onUploadSuccess
     if (y === 3) return 1.5;
     if (y === 4) return 2.0;
     return 0.5;
+  };
+
+  const handleCopyTemplate = () => {
+    navigator.clipboard.writeText(sampleCsv);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDownloadTemplate = () => {
+    const blob = new Blob([sampleCsv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "dgpl_players_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const parseInput = (rawText) => {
@@ -45,20 +72,22 @@ export default function CsvUploadModal({ isOpen, onClose, token, onUploadSuccess
       try {
         const json = JSON.parse(trimmed);
         if (!Array.isArray(json)) throw new Error("JSON must be an array of player objects");
-        const list = json.map((p) => {
-          const year = parseInt(p.year, 10) || 1;
-          const basePrice =
-            p.basePrice != null && p.basePrice !== ""
-              ? parseFloat(p.basePrice)
-              : getAutoBasePrice(year);
-          return {
-            name: p.name || "",
-            category: p.category || p.role || "All-Rounder",
-            year,
-            basePrice,
-            image: p.image || p.photo || p.imageUrl || "",
-          };
-        }).filter((p) => p.name.trim().length > 0);
+        const list = json
+          .map((p) => {
+            const year = parseInt(p.year, 10) || 1;
+            const basePrice =
+              p.basePrice != null && p.basePrice !== ""
+                ? parseFloat(p.basePrice)
+                : getAutoBasePrice(year);
+            return {
+              name: p.name || "",
+              category: p.category || p.role || "All-Rounder",
+              year,
+              basePrice,
+              image: p.image || p.photo || p.imageUrl || "",
+            };
+          })
+          .filter((p) => p.name.trim().length > 0);
         setPreviewData(list);
       } catch (err) {
         setError("Invalid JSON format: " + err.message);
@@ -85,40 +114,49 @@ export default function CsvUploadModal({ isOpen, onClose, token, onUploadSuccess
     );
 
     if (nameIdx === -1) {
-      setError('Missing "Name" header column in CSV.');
+      setError('Missing "name" header column in CSV.');
       setPreviewData([]);
       return;
     }
 
     const parsed = [];
     for (let i = 1; i < lines.length; i++) {
-      const cells = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || lines[i].split(",");
-      const cleanCells = cells.map((c) => c.trim().replace(/^"|"$/g, ""));
-      const name = cleanCells[nameIdx];
+      const line = lines[i].trim();
+      if (!line) continue;
+      // Handle commas inside quotes or plain split
+      const cells = line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+      const name = cells[nameIdx];
       if (!name) continue;
 
-      let category = catIdx >= 0 ? cleanCells[catIdx] : "All-Rounder";
-      const catLower = category.toLowerCase();
-      if (catLower.includes("bat")) category = "Batsman";
-      else if (catLower.includes("bowl")) category = "Bowler";
-      else if (catLower.includes("keep") || catLower.includes("wk")) category = "Wicket-Keeper";
-      else category = "All-Rounder";
+      let category = catIdx >= 0 ? cells[catIdx] : "All-Rounder";
+      if (!category) category = "All-Rounder";
 
-      const yearVal = yearIdx >= 0 ? parseInt(cleanCells[yearIdx], 10) : 1;
-      const year = isNaN(yearVal) ? 1 : yearVal;
-
-      let basePrice;
-      if (priceIdx >= 0 && cleanCells[priceIdx] && !isNaN(parseFloat(cleanCells[priceIdx]))) {
-        basePrice = parseFloat(cleanCells[priceIdx]);
-      } else {
-        basePrice = getAutoBasePrice(year);
+      let year = 1;
+      if (yearIdx >= 0 && cells[yearIdx]) {
+        const yMatch = cells[yearIdx].match(/\d+/);
+        if (yMatch) year = parseInt(yMatch[0], 10);
       }
 
-      const image = imgIdx >= 0 && cleanCells[imgIdx] ? cleanCells[imgIdx] : "";
+      let basePrice = getAutoBasePrice(year);
+      if (priceIdx >= 0 && cells[priceIdx]) {
+        const pVal = parseFloat(cells[priceIdx]);
+        if (!isNaN(pVal)) basePrice = pVal;
+      }
 
-      parsed.push({ name, category, year, basePrice, image });
+      const image = imgIdx >= 0 && cells[imgIdx] ? cells[imgIdx] : "";
+
+      parsed.push({
+        name,
+        category,
+        year,
+        basePrice,
+        image,
+      });
     }
 
+    if (parsed.length === 0) {
+      setError("No valid player rows found.");
+    }
     setPreviewData(parsed);
   };
 
@@ -174,63 +212,84 @@ export default function CsvUploadModal({ isOpen, onClose, token, onUploadSuccess
     }
   };
 
-  const sampleCsv = `Name,Role,Year,Image
-Rohit Sharma,Batsman,4,https://res.cloudinary.com/demo/image/upload/sample.jpg
-Jasprit Bumrah,Bowler,3,https://res.cloudinary.com/demo/image/upload/sample.jpg
-Hardik Pandya,All-Rounder,2,
-Rishabh Pant,Wicket-Keeper,1,`;
-
-  const sampleJson = `[
-  {
-    "name": "Virat Kohli",
-    "category": "Batsman",
-    "year": 4,
-    "image": "https://example.com/photo.jpg"
-  },
-  {
-    "name": "Ravindra Jadeja",
-    "category": "All-Rounder",
-    "year": 3
-  }
-]`;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 overflow-y-auto">
-      <div className="glass-card max-w-2xl w-full p-6 sm:p-8 space-y-6 border-white/15 bg-[#0a0d14]/95 shadow-2xl my-8">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-5 overflow-y-auto">
+      <div className="glass-card max-w-2xl w-full p-5 sm:p-7 space-y-5 border-white/20 bg-[#0e121c]/95 shadow-2xl my-auto max-h-[92vh] overflow-y-auto custom-scroll relative">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 pb-4">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+            <div className="p-2.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
               <Upload className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-black text-white">Import Players (CSV / JSON)</h2>
-              <p className="text-xs text-white/50">
-                Bulk upload with automatic academic year base pricing & photo URLs
-              </p>
+              <h3 className="text-lg font-black text-white">Import Players</h3>
+              <p className="text-xs text-white/50">Upload CSV or JSON player list to populate tournament pool</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition cursor-pointer"
+            className="p-1.5 rounded-xl text-white/40 hover:text-white hover:bg-white/[0.08] transition cursor-pointer"
             type="button"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Pricing rules info */}
-        <div className="p-3.5 rounded-xl bg-cyan-500/5 border border-cyan-500/20 text-xs text-cyan-200/90 flex items-start gap-2.5">
-          <Sparkles className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <span className="font-bold text-white">Automatic Base Points Applied:</span>
-            <div className="flex flex-wrap gap-2 pt-1 text-[11px]">
-              <span className="px-2 py-0.5 rounded bg-white/[0.06] border border-white/10 text-white font-medium">1st Year: <strong>0.5 Pts</strong></span>
-              <span className="px-2 py-0.5 rounded bg-white/[0.06] border border-white/10 text-white font-medium">2nd Year: <strong>1.0 Pts</strong></span>
-              <span className="px-2 py-0.5 rounded bg-white/[0.06] border border-white/10 text-white font-medium">3rd Year: <strong>1.5 Pts</strong></span>
-              <span className="px-2 py-0.5 rounded bg-white/[0.06] border border-white/10 text-white font-medium">4th Year: <strong>2.0 Pts</strong></span>
+        {/* CSV Format Specification Card */}
+        <div className="p-4 rounded-2xl bg-gradient-to-br from-cyan-500/[0.08] to-blue-500/[0.03] border border-cyan-500/25 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-cyan-400" />
+              <span className="text-xs font-black uppercase tracking-wider text-cyan-300">
+                Required CSV Column Format
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCopyTemplate}
+                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-white/80 transition flex items-center gap-1 cursor-pointer"
+                type="button"
+              >
+                {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                <span>{copied ? "Copied!" : "Copy Format"}</span>
+              </button>
+              <button
+                onClick={handleDownloadTemplate}
+                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 transition flex items-center gap-1 cursor-pointer"
+                type="button"
+              >
+                <Download className="w-3 h-3" />
+                <span>Template .csv</span>
+              </button>
             </div>
           </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px]">
+            <div className="bg-black/30 p-2 rounded-xl border border-white/10">
+              <strong className="text-cyan-300 block">name</strong>
+              <span className="text-white/40 text-[10px]">Full Name *</span>
+            </div>
+            <div className="bg-black/30 p-2 rounded-xl border border-white/10">
+              <strong className="text-cyan-300 block">year</strong>
+              <span className="text-white/40 text-[10px]">1, 2, 3, or 4 *</span>
+            </div>
+            <div className="bg-black/30 p-2 rounded-xl border border-white/10">
+              <strong className="text-cyan-300 block">category</strong>
+              <span className="text-white/40 text-[10px]">Batsman / Bowler *</span>
+            </div>
+            <div className="bg-black/30 p-2 rounded-xl border border-white/10">
+              <strong className="text-white/70 block">image</strong>
+              <span className="text-white/40 text-[10px]">Photo URL (optional)</span>
+            </div>
+            <div className="bg-black/30 p-2 rounded-xl border border-white/10">
+              <strong className="text-white/70 block">basePrice</strong>
+              <span className="text-white/40 text-[10px]">Auto (optional)</span>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-white/50">
+            * <em>basePrice</em> is automatically assigned based on year (1st=0.5, 2nd=1.0, 3rd=1.5, 4th=2.0 Pts) if left blank.
+          </p>
         </div>
 
         {/* Input tabs */}
@@ -284,7 +343,7 @@ Rishabh Pant,Wicket-Keeper,1,`;
               rows={6}
               value={pastedText}
               onChange={handleTextChange}
-              placeholder="Paste raw CSV (with header: Name, Role, Year, Image) or JSON array..."
+              placeholder="Paste raw CSV lines (e.g. name,year,category,image,basePrice)..."
               className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-white placeholder-white/20 focus:outline-none focus:border-cyan-400 font-mono custom-scroll"
             />
           </div>
@@ -307,7 +366,7 @@ Rishabh Pant,Wicket-Keeper,1,`;
                     <th className="p-2">Name</th>
                     <th className="p-2">Category</th>
                     <th className="p-2">Year</th>
-                    <th className="p-2">Auto Base</th>
+                    <th className="p-2">Base Pts</th>
                     <th className="p-2">Photo</th>
                   </tr>
                 </thead>
@@ -324,7 +383,7 @@ Rishabh Pant,Wicket-Keeper,1,`;
                             <ImageIcon className="w-3 h-3 shrink-0" /> Link
                           </span>
                         ) : (
-                          <span className="text-white/30 text-[10px]">Placeholder</span>
+                          <span className="text-white/30 text-[10px]">None</span>
                         )}
                       </td>
                     </tr>
@@ -353,7 +412,7 @@ Rishabh Pant,Wicket-Keeper,1,`;
         {/* Footer actions */}
         <div className="flex items-center justify-between pt-2 border-t border-white/10">
           <div className="text-[11px] text-white/40">
-            {previewData.length > 0 ? `${previewData.length} players selected` : "No file uploaded"}
+            {previewData.length > 0 ? `${previewData.length} players ready` : "No file parsed"}
           </div>
           <div className="flex items-center gap-3">
             <button
