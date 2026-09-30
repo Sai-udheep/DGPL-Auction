@@ -34,4 +34,12 @@ router
     teamController.deleteTeam
   );
 
+router
+  .route('/:id/assign-captain')
+  .post(
+    authController.protect,
+    authController.restrictTo('admin'),
+    teamController.assignCaptain
+  );
+
 module.exports = router;

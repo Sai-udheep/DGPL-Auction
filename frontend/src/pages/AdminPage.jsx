@@ -2,6 +2,8 @@
 import YearSelector from "../components/admin/YearSelector";
 import PlayerTable from "../components/admin/PlayerTable";
 import CsvUploadModal from "../components/admin/CsvUploadModal";
+import CaptainsModal from "../components/admin/CaptainsModal";
+import RandomDrawModal from "../components/admin/RandomDrawModal";
 import { API_URL } from "../config";
 import { useAuth } from "../context/authContextCore";
 import { useSocket } from "../context/useSocket";
@@ -16,6 +18,9 @@ import {
   X,
   Users,
   Gavel,
+  Crown,
+  Dices,
+  UserCheck,
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -40,6 +45,11 @@ export default function AdminPage() {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isDeleteAllConfirmOpen, setIsDeleteAllConfirmOpen] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
+
+  // Captains & Random Draw Modals
+  const [isCaptainsModalOpen, setIsCaptainsModalOpen] = useState(false);
+  const [isRandomDrawModalOpen, setIsRandomDrawModalOpen] = useState(false);
+  const [drawnPlayer, setDrawnPlayer] = useState(null);
 
   // Descending academic years (4th to 1st)
   const yearOptions = useMemo(
@@ -546,6 +556,24 @@ export default function AdminPage() {
 
   const nonSoldPlayers = players.filter((p) => p.status !== "sold");
 
+  // Random player draw logic
+  const handleDrawRandomPlayer = () => {
+    if (availablePlayers.length === 0 || currentAuctionPlayerId !== null) return;
+    const randomIndex = Math.floor(Math.random() * availablePlayers.length);
+    setDrawnPlayer(availablePlayers[randomIndex]);
+    setIsRandomDrawModalOpen(true);
+  };
+
+  const handleDrawAnother = () => {
+    if (availablePlayers.length <= 1) return;
+    const others = availablePlayers.filter(
+      (p) => String(p._id) !== String(drawnPlayer?._id)
+    );
+    if (others.length === 0) return;
+    const randomIndex = Math.floor(Math.random() * others.length);
+    setDrawnPlayer(others[randomIndex]);
+  };
+
   return (
     <div className="max-w-6xl mx-auto px-2 sm:px-4 pt-2 pb-10 space-y-4 sm:space-y-5">
       {/* Page Header */}
@@ -605,6 +633,17 @@ export default function AdminPage() {
 
         {/* Action Buttons Row */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Manage Captains */}
+          <button
+            onClick={() => setIsCaptainsModalOpen(true)}
+            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold text-amber-300 bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/35 hover:border-amber-400/60 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-sm"
+            type="button"
+            title="Assign captains for the 4 teams"
+          >
+            <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span>Captains</span>
+          </button>
+
           {/* Upload CSV */}
           <button
             onClick={() => setIsUploadModalOpen(true)}
