@@ -132,7 +132,10 @@ export default function AdminPage() {
         },
         body: JSON.stringify({ isAuctionActive: nextStatus }),
       });
-      if (!res.ok) throw new Error("Failed to update auction status");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to update auction status");
+      }
       const data = await res.json();
       setIsAuctionActive(data.data.isAuctionActive);
       setAuctionMessage(
@@ -185,7 +188,10 @@ export default function AdminPage() {
           Authorization: `Bearer ${token}`,
         },
       });
-      if (!res.ok) throw new Error("Failed to delete player");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to delete player");
+      }
       setPlayers((prev) => prev.filter((p) => p._id !== playerId));
       setAuctionMessage("Player deleted successfully.");
     } catch (err) {
@@ -233,7 +239,10 @@ export default function AdminPage() {
         },
         body: JSON.stringify({ playerId }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to start auction");
+      }
       setIsAuctionActive(true);
       setAuctionMessage("Player is now in auction!");
       setPlayers((prev) =>
@@ -258,7 +267,10 @@ export default function AdminPage() {
         },
         body: JSON.stringify({ playerId }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to sell player");
+      }
       const resData = await res.json();
       const winningTeamId = resData?.data?.player?.team;
       setAuctionMessage("Player successfully sold!");
@@ -292,7 +304,10 @@ export default function AdminPage() {
         },
         body: JSON.stringify({ playerId }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to mark unsold");
+      }
       setAuctionMessage("Player marked unsold.");
       setPlayers((prev) =>
         prev.map((p) => (p._id === playerId ? { ...p, status: "unsold" } : p))
@@ -305,7 +320,7 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-8 relative z-10 space-y-6 sm:space-y-8">
+    <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-8 relative z-10 space-y-5 sm:space-y-8">
       {/* Page Title & Bulk Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
         <div>
