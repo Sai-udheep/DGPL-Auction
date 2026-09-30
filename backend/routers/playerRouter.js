@@ -6,12 +6,27 @@ const router = express.Router();
 
 router
   .route('/')
-  // Publicly expose player list for summary UI; secure if needed later
   .get(playerController.getAllPlayers)
   .post(
     authController.protect,
     authController.restrictTo('admin'),
     playerController.createPlayer
+  );
+
+router
+  .route('/delete-all')
+  .delete(
+    authController.protect,
+    authController.restrictTo('admin'),
+    playerController.deleteAllPlayers
+  );
+
+router
+  .route('/upload')
+  .post(
+    authController.protect,
+    authController.restrictTo('admin'),
+    playerController.uploadPlayers
   );
 
 router
