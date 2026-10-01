@@ -7,6 +7,7 @@ import RandomDrawModal from "../components/admin/RandomDrawModal";
 import AdminLiveStage from "../components/admin/AdminLiveStage";
 import AdminTeamsModal from "../components/admin/AdminTeamsModal";
 import UnapprovedPoolModal from "../components/admin/UnapprovedPoolModal";
+import ErrorBoundary from "../components/ErrorBoundary";
 import { API_URL } from "../config";
 import { useAuth } from "../context/authContextCore";
 import { useSocket } from "../context/useSocket";
@@ -890,17 +891,19 @@ export default function AdminPage() {
     <div className="max-w-6xl mx-auto px-2 sm:px-4 pt-2 pb-10 space-y-4 sm:space-y-5 w-full min-w-0 max-w-full">
       {/* Live Ongoing Player Spotlight Stage (Pinned at Top for Admin) */}
       {currentAuctionPlayerId && (
-        <AdminLiveStage
-          player={
-            players.find((p) => String(p._id) === String(currentAuctionPlayerId)) ||
-            inAuctionPlayers[0]
-          }
-          onSellPlayer={handleSellPlayer}
-          onMarkUnsold={handleMarkUnsold}
-          onCancelPlayer={handleCancelPlayer}
-          actionLoadingId={actionLoadingId}
-          socket={socket}
-        />
+        <ErrorBoundary>
+          <AdminLiveStage
+            player={
+              players.find((p) => String(p._id) === String(currentAuctionPlayerId)) ||
+              inAuctionPlayers[0]
+            }
+            onSellPlayer={handleSellPlayer}
+            onMarkUnsold={handleMarkUnsold}
+            onCancelPlayer={handleCancelPlayer}
+            actionLoadingId={actionLoadingId}
+            socket={socket}
+          />
+        </ErrorBoundary>
       )}
 
       {/* Page Header */}

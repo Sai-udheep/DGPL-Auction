@@ -27,6 +27,11 @@ export default function AdminLiveStage({
   const [confirmSell, setConfirmSell] = useState(false);
   const [confirmUnsold, setConfirmUnsold] = useState(false);
 
+  // Reset active call when player changes or bid history updates (Must be before any early return)
+  React.useEffect(() => {
+    setActiveCall(null);
+  }, [player?._id, player?.bidHistory?.length]);
+
   if (!player) {
     return (
       <div className="glass-card p-4 sm:p-5 border-white/10 bg-white/[0.02] flex items-center justify-between gap-4">
@@ -51,11 +56,6 @@ export default function AdminLiveStage({
       </div>
     );
   }
-
-  // Reset active call when player changes or bid history updates
-  React.useEffect(() => {
-    setActiveCall(null);
-  }, [player?._id, player?.bidHistory?.length]);
 
   const handleMakeCall = (callNum) => {
     setActiveCall(callNum);

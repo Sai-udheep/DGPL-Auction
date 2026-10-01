@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Header from "./components/Header";
 import NavTabs from "./components/NavTabs";
@@ -12,6 +12,7 @@ import PlayerProfilePage from "./pages/PlayerProfilePage";
 import { useSocket } from "./context/useSocket";
 import { useAuth } from "./context/authContextCore";
 import Toast from "./components/Toast";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { API_URL } from "./config";
 import { playAuctionCallSound, playSoldSound } from "./utils/auctionSound";
 
@@ -298,54 +299,56 @@ function App() {
 
         <Header />
 
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <>
-                <NavTabs activeTab={activeTab} onChange={setActiveTab} />
-                <main
-                  className={`container mx-auto px-2 sm:px-4 ${
-                    activeTab === "live"
-                      ? "max-h-[calc(100dvh-125px)] overflow-hidden sm:max-h-none sm:overflow-visible pb-2 sm:pb-20"
-                      : "pb-20"
-                  } max-w-6xl`}
-                >
-                  {activeTab === "live" && (
-                    <div className="flex justify-center w-full">
-                      {recentlySold && !currentPlayer ? (
-                        <SoldBanner
-                          name={recentlySold.name}
-                          teamName={recentlySold.teamName}
-                          amount={recentlySold.amount}
-                        />
-                      ) : recentlyUnsold && !currentPlayer ? (
-                        <UnsoldBanner name={recentlyUnsold.name} />
-                      ) : (
-                        <CurrentPlayer
-                          key={currentPlayer?._id || "no-player"}
-                          player={currentPlayer || null}
-                          isAuctionActive={isAuctionActive}
-                          teams={teams}
-                activeAuctionCall={activeAuctionCall}
-                        />
-                      )}
-                    </div>
-                  )}
-                  {activeTab === "summary" && <AuctionSummary />}
-                </main>
-              </>
-            }
-          />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/player/:playerId" element={<PlayerProfilePage />} />
-          <Route
-            path="/admin"
-            element={
-              <RequireAdmin isAuthenticated={isAuthenticated} user={user} />
-            }
-          />
-        </Routes>
+        <ErrorBoundary>
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <>
+                  <NavTabs activeTab={activeTab} onChange={setActiveTab} />
+                  <main
+                    className={`container mx-auto px-2 sm:px-4 ${
+                      activeTab === "live"
+                        ? "max-h-[calc(100dvh-125px)] overflow-hidden sm:max-h-none sm:overflow-visible pb-2 sm:pb-20"
+                        : "pb-20"
+                    } max-w-6xl`}
+                  >
+                    {activeTab === "live" && (
+                      <div className="flex justify-center w-full">
+                        {recentlySold && !currentPlayer ? (
+                          <SoldBanner
+                            name={recentlySold.name}
+                            teamName={recentlySold.teamName}
+                            amount={recentlySold.amount}
+                          />
+                        ) : recentlyUnsold && !currentPlayer ? (
+                          <UnsoldBanner name={recentlyUnsold.name} />
+                        ) : (
+                          <CurrentPlayer
+                            key={currentPlayer?._id || "no-player"}
+                            player={currentPlayer || null}
+                            isAuctionActive={isAuctionActive}
+                            teams={teams}
+                  activeAuctionCall={activeAuctionCall}
+                          />
+                        )}
+                      </div>
+                    )}
+                    {activeTab === "summary" && <AuctionSummary />}
+                  </main>
+                </>
+              }
+            />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/player/:playerId" element={<PlayerProfilePage />} />
+            <Route
+              path="/admin"
+              element={
+                <RequireAdmin isAuthenticated={isAuthenticated} user={user} />
+              }
+            />
+          </Routes>
+        </ErrorBoundary>
       </div>
     </div>
   );
