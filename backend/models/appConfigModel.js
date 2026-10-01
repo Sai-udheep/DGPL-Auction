@@ -1,9 +1,12 @@
-﻿const mongoose = require('mongoose');
+const mongoose = require('mongoose');
 
 const appConfigSchema = new mongoose.Schema(
   {
     sessionsInvalidatedAt: { type: Date, default: Date.now },
     isAuctionActive: { type: Boolean, default: false },
+    googleSheetSyncUrl: { type: String, default: '' },
+    isAutoSyncEnabled: { type: Boolean, default: false },
+    lastSyncedAt: { type: Date, default: null },
   },
   { collection: 'appconfig' }
 );

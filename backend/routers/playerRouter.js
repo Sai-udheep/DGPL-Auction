@@ -38,6 +38,23 @@ router
     playerController.syncGoogleSheet
   );
 
+// Background Auto-sync routes (must be before /:id)
+router
+  .route('/auto-sync-status')
+  .get(
+    authController.protect,
+    authController.restrictTo('admin'),
+    playerController.getAutoSyncStatus
+  );
+
+router
+  .route('/configure-auto-sync')
+  .post(
+    authController.protect,
+    authController.restrictTo('admin'),
+    playerController.configureAutoSync
+  );
+
 // Bulk unapproved management (MUST be before /:id)
 router
   .route('/approve-all')

@@ -11,6 +11,7 @@ const User = require('./models/userModel');
 const Player = require('./models/playerModel');
 const Team = require('./models/teamModel');
 const AppConfig = require('./models/appConfigModel');
+const playerController = require('./controllers/playerController');
 
 const PORT = process.env.PORT || 5000;
 console.log('[Config] Using PORT =', PORT);
@@ -366,6 +367,23 @@ io.on('connection', (socket) => {
     console.log('A user disconnected');
   });
 });
+
+// Background Auto-Sync Worker for Google Forms (Every 45 seconds)
+setInterval(async () => {
+  try {
+    const cfg = await AppConfig.findOne();
+    if (cfg && cfg.isAutoSyncEnabled && cfg.googleSheetSyncUrl) {
+      const result = await playerController.syncSheetCore(cfg.googleSheetSyncUrl, true, io);
+      if (result && result.count > 0) {
+        console.log(`[Auto-Sync] Ingested ${result.count} new submissions from Google Form!`);
+        cfg.lastSyncedAt = new Date();
+        await cfg.save();
+      }
+    }
+  } catch (err) {
+    // Non-fatal background sync error
+  }
+}, 45000);
 
 // Listen on 0.0.0.0 so that LAN/mobile devices can reach the server
 httpServer.listen(PORT, '0.0.0.0', () => {
