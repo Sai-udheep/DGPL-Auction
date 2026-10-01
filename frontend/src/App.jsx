@@ -18,8 +18,6 @@ function App() {
   const [activeTab, setActiveTab] = useState("live");
   const [currentPlayer, setCurrentPlayer] = useState(null);
   const [isAuctionActive, setIsAuctionActive] = useState(false);
-  const [tournamentTitle, setTournamentTitle] = useState("DGPL Season 11");
-  const [tournamentMode, setTournamentMode] = useState("Official Auction");
   const [teams, setTeams] = useState([]);
   const [recentlySold, setRecentlySold] = useState(null);
   const [recentlyUnsold, setRecentlyUnsold] = useState(null);
@@ -164,11 +162,6 @@ function App() {
       }, 5000);
     };
 
-    const handleTournamentInfoChanged = (payload) => {
-      if (payload?.tournamentTitle) setTournamentTitle(payload.tournamentTitle);
-      if (payload?.tournamentMode) setTournamentMode(payload.tournamentMode);
-    };
-
     socket.on("new_player", handleNewPlayer);
     socket.on("server:new_bid", handleNewBid);
     socket.on("player_sold", handlePlayerSold);
@@ -179,8 +172,7 @@ function App() {
     socket.on("server:auction_status_changed", handleAuctionStatusChanged);
     socket.on("server:auction_reset", handleAuctionReset);
     socket.on("server:player_withdrawn", handlePlayerWithdrawn);
-    socket.on("server:tournament_info_changed", handleTournamentInfoChanged);
-
+    
     return () => {
       socket.off("new_player", handleNewPlayer);
       socket.off("server:new_bid", handleNewBid);
@@ -192,8 +184,7 @@ function App() {
       socket.off("server:auction_status_changed", handleAuctionStatusChanged);
       socket.off("server:auction_reset", handleAuctionReset);
       socket.off("server:player_withdrawn", handlePlayerWithdrawn);
-      socket.off("server:tournament_info_changed", handleTournamentInfoChanged);
-    };
+          };
   }, [socket, isConnected]);
 
   // Load current auction player & global auction status
@@ -263,7 +254,7 @@ function App() {
           </div>
         )}
 
-        <Header tournamentTitle={tournamentTitle} tournamentMode={tournamentMode} />
+        <Header />
 
         <Routes>
           <Route
