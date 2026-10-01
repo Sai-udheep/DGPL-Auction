@@ -336,6 +336,17 @@ Rishabh Pant,Wicket-Keeper,2,1.0,https://images.unsplash.com/photo-1492562080023
           image = `https://via.placeholder.com/200x250?text=${encodeURIComponent(name)}`;
         }
 
+        const isDuplicate = parsed.some(
+          (p) =>
+            p.name.trim().toLowerCase() === name.trim().toLowerCase() &&
+            p.year === year &&
+            p.category.toLowerCase() === category.toLowerCase() &&
+            p.image === image
+        );
+        if (isDuplicate) {
+          continue;
+        }
+
         parsed.push({
           name,
           category,
@@ -443,6 +454,17 @@ Rishabh Pant,Wicket-Keeper,2,1.0,https://images.unsplash.com/photo-1492562080023
       }
       if (!image) {
         image = `https://via.placeholder.com/200x250?text=${encodeURIComponent(name)}`;
+      }
+
+      const isDuplicate = parsed.some(
+        (p) =>
+          p.name.trim().toLowerCase() === name.trim().toLowerCase() &&
+          p.year === year &&
+          p.category.toLowerCase() === category.toLowerCase() &&
+          p.image === image
+      );
+      if (isDuplicate) {
+        continue;
       }
 
       parsed.push({

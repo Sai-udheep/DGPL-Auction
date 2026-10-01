@@ -301,20 +301,6 @@ const syncSheetCore = async (sheetUrl, asUnapproved = true, io = null) => {
       }
       if (!name) continue;
 
-      const isAlreadyInBatch = newPlayersToInsert.some(
-        (p) => p.name.trim().toLowerCase() === name.trim().toLowerCase()
-      );
-      if (isAlreadyInBatch) {
-        skippedDuplicates++;
-        continue;
-      }
-
-      const existing = await Player.findOne({ name: new RegExp(`^${name}$`, 'i') });
-      if (existing) {
-        skippedDuplicates++;
-        continue;
-      }
-
       const roleKey = Object.keys(entry).find((k) =>
         k.includes('role') || k.includes('category') || k.includes('skill') || k.includes('playing')
       );
@@ -342,6 +328,30 @@ const syncSheetCore = async (sheetUrl, asUnapproved = true, io = null) => {
       }
       if (!image) {
         image = `https://via.placeholder.com/200x250?text=${encodeURIComponent(name)}`;
+      }
+
+      const isDuplicateInBatch = newPlayersToInsert.some(
+        (p) =>
+          p.name.trim().toLowerCase() === name.trim().toLowerCase() &&
+          p.year === year &&
+          p.category.toLowerCase() === category.toLowerCase() &&
+          p.image === image
+      );
+      if (isDuplicateInBatch) {
+        skippedDuplicates++;
+        continue;
+      }
+
+      const escapedName = name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const existing = await Player.findOne({
+        name: new RegExp(`^${escapedName}$`, 'i'),
+        year: year,
+        category: category,
+        image: image,
+      });
+      if (existing) {
+        skippedDuplicates++;
+        continue;
       }
 
       newPlayersToInsert.push({
@@ -383,20 +393,6 @@ const syncSheetCore = async (sheetUrl, asUnapproved = true, io = null) => {
         }
         if (!name) continue;
 
-        const isAlreadyInBatch = newPlayersToInsert.some(
-          (p) => p.name.trim().toLowerCase() === name.trim().toLowerCase()
-        );
-        if (isAlreadyInBatch) {
-          skippedDuplicates++;
-          continue;
-        }
-
-        const existing = await Player.findOne({ name: new RegExp(`^${name}$`, 'i') });
-        if (existing) {
-          skippedDuplicates++;
-          continue;
-        }
-
         let rawCat = catIdx >= 0 && cells[catIdx] ? cells[catIdx] : 'All-Rounder';
         const catLower = rawCat.toLowerCase();
         let category = 'All-Rounder';
@@ -425,6 +421,30 @@ const syncSheetCore = async (sheetUrl, asUnapproved = true, io = null) => {
         }
         if (!image) {
           image = `https://via.placeholder.com/200x250?text=${encodeURIComponent(name)}`;
+        }
+
+        const isDuplicateInBatch = newPlayersToInsert.some(
+          (p) =>
+            p.name.trim().toLowerCase() === name.trim().toLowerCase() &&
+            p.year === year &&
+            p.category.toLowerCase() === category.toLowerCase() &&
+            p.image === image
+        );
+        if (isDuplicateInBatch) {
+          skippedDuplicates++;
+          continue;
+        }
+
+        const escapedName = name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const existing = await Player.findOne({
+          name: new RegExp(`^${escapedName}$`, 'i'),
+          year: year,
+          category: category,
+          image: image,
+        });
+        if (existing) {
+          skippedDuplicates++;
+          continue;
         }
 
         newPlayersToInsert.push({
@@ -658,131 +678,159 @@ exports.uploadPlayers = catchAsync(async (req, res, next) => {
         }
       }
       if (!name) continue;
-      const alreadyQueued = playersToInsert.some(
-        (p) => p.name.trim().toLowerCase() === name.trim().toLowerCase()
+
+      const roleKey = Object.keys(entry).find((k) =>
+        k.includes('role') || k.includes('category') || k.includes('skill') || k.includes('playing')
       );
-      if (alreadyQueued) continue;
+      let rawRole = (roleKey ? entry[roleKey] : 'All-Rounder').toLowerCase();
+      let category = 'All-Rounder';
+      if (rawRole.includes('bat')) category = 'Batsman';
+      else if (rawRole.includes('bowl')) category = 'Bowler';
+      else if (rawRole.includes('keep') || rawRole.includes('wk') || rawRole.includes('wicket')) category = 'Wicket-Keeper';
 
-          const roleKey = Object.keys(entry).find((k) =>
-            k.includes('role') || k.includes('category') || k.includes('skill') || k.includes('playing')
-          );
-          let rawRole = (roleKey ? entry[roleKey] : 'All-Rounder').toLowerCase();
-          let category = 'All-Rounder';
-          if (rawRole.includes('bat')) category = 'Batsman';
-          else if (rawRole.includes('bowl')) category = 'Bowler';
-          else if (rawRole.includes('keep') || rawRole.includes('wk') || rawRole.includes('wicket')) category = 'Wicket-Keeper';
+      const yearKey = Object.keys(entry).find((k) =>
+        k.includes('year') || k.includes('academic') || k.includes('batch') || k.includes('participation')
+      );
+      const year = parseAcademicYear(yearKey ? entry[yearKey] : 1);
+      const basePrice = getAutoBasePrice(year);
 
-          const yearKey = Object.keys(entry).find((k) =>
-            k.includes('year') || k.includes('academic') || k.includes('batch') || k.includes('participation')
-          );
-          const year = parseAcademicYear(yearKey ? entry[yearKey] : 1);
-          const basePrice = getAutoBasePrice(year);
+      const photoKey = Object.keys(entry).find((k) =>
+        k.includes('photo') || k.includes('image') || k.includes('picture') || k.includes('upload') || k.includes('link') || k.includes('url')
+      );
+      let image = photoKey ? entry[photoKey] : '';
+      const urlMatch = image.match(/https?:\/\/[^\s\)\]]+/);
+      if (urlMatch) image = urlMatch[0];
+      const driveMatch = image.match(/\/d\/([a-zA-Z0-9_-]+)/) || image.match(/id=([a-zA-Z0-9_-]+)/);
+      if (driveMatch) {
+        image = `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
+      }
+      if (!image) {
+        image = `https://via.placeholder.com/200x250?text=${encodeURIComponent(name)}`;
+      }
 
-          const photoKey = Object.keys(entry).find((k) =>
-            k.includes('photo') || k.includes('image') || k.includes('picture') || k.includes('upload') || k.includes('link') || k.includes('url')
-          );
-          let image = photoKey ? entry[photoKey] : '';
-          const urlMatch = image.match(/https?:\/\/[^\s\)\]]+/);
-          if (urlMatch) image = urlMatch[0];
-          const driveMatch = image.match(/\/d\/([a-zA-Z0-9_-]+)/) || image.match(/id=([a-zA-Z0-9_-]+)/);
-          if (driveMatch) {
-            image = `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
-          }
-          if (!image) {
-            image = `https://via.placeholder.com/200x250?text=${encodeURIComponent(name)}`;
-          }
+      const isDuplicateInBatch = playersToInsert.some(
+        (p) =>
+          p.name.trim().toLowerCase() === name.trim().toLowerCase() &&
+          p.year === year &&
+          p.category.toLowerCase() === category.toLowerCase() &&
+          p.image === image
+      );
+      if (isDuplicateInBatch) continue;
 
-          playersToInsert.push({
-            name,
-            category,
-            year,
-            basePrice,
-            image,
-            status: 'unsold',
-            isCaptain: false,
-            isApproved: asUnapproved ? false : true,
-            bidHistory: [],
-          });
-        }
-      } else {
-        const delimiter = lines[0].includes('\t') ? '\t' : ',';
-        const headers = splitCsvLine(lines[0], delimiter).map((h) => h.toLowerCase().replace(/['"]/g, ''));
-        const fullNameIdx = headers.findIndex((h) => h.includes('full') && h.includes('name'));
+      const escapedName = name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const existing = await Player.findOne({
+        name: new RegExp(`^${escapedName}$`, 'i'),
+        year: year,
+        category: category,
+        image: image,
+      });
+      if (existing) continue;
+
+      playersToInsert.push({
+        name,
+        category,
+        year,
+        basePrice,
+        image,
+        status: 'unsold',
+        isCaptain: false,
+        isApproved: asUnapproved ? false : true,
+        bidHistory: [],
+      });
+    }
+  } else {
+    const delimiter = lines[0].includes('\t') ? '\t' : ',';
+    const headers = splitCsvLine(lines[0], delimiter).map((h) => h.toLowerCase().replace(/['"]/g, ''));
+    const fullNameIdx = headers.findIndex((h) => h.includes('full') && h.includes('name'));
     const firstNameIdx = headers.findIndex((h) => h.includes('first') && h.includes('name'));
     const lastNameIdx = headers.findIndex((h) => (h.includes('last') || h.includes('second') || h.includes('surname')));
     const generalNameIdx = headers.findIndex((h) => (h.includes('name') || h.includes('player')) && !h.includes('timestamp'));
     const nameIdx = fullNameIdx !== -1 ? fullNameIdx : (firstNameIdx !== -1 ? firstNameIdx : generalNameIdx);
-        const catIdx = headers.findIndex((h) => h.includes('role') || h.includes('category') || h.includes('skill') || h.includes('playing'));
-        const yearIdx = headers.findIndex((h) => h.includes('year') || h.includes('batch') || h.includes('academic') || h.includes('participation'));
-        const priceIdx = headers.findIndex((h) => h.includes('price') || h.includes('base') || h.includes('points'));
-        const imgIdx = headers.findIndex((h) => h.includes('photo') || h.includes('image') || h.includes('picture') || h.includes('link') || h.includes('url') || h.includes('upload'));
+    const catIdx = headers.findIndex((h) => h.includes('role') || h.includes('category') || h.includes('skill') || h.includes('playing'));
+    const yearIdx = headers.findIndex((h) => h.includes('year') || h.includes('batch') || h.includes('academic') || h.includes('participation'));
+    const priceIdx = headers.findIndex((h) => h.includes('price') || h.includes('base') || h.includes('points'));
+    const imgIdx = headers.findIndex((h) => h.includes('photo') || h.includes('image') || h.includes('picture') || h.includes('link') || h.includes('url') || h.includes('upload'));
 
-        if (nameIdx === -1) {
-          return next(new AppError('Missing required "Name" column in CSV.', 400));
-        }
+    if (nameIdx === -1) {
+      return next(new AppError('Missing required "Name" column in CSV.', 400));
+    }
 
-        for (let i = 1; i < lines.length; i++) {
-          const cells = splitCsvLine(lines[i], delimiter);
+    for (let i = 1; i < lines.length; i++) {
+      const cells = splitCsvLine(lines[i], delimiter);
 
-        let name = '';
-        if (fullNameIdx !== -1 && cells[fullNameIdx]) {
-          name = cells[fullNameIdx].trim();
-        } else if (firstNameIdx !== -1 && lastNameIdx !== -1) {
-          name = `${cells[firstNameIdx] || ''} ${cells[lastNameIdx] || ''}`.trim();
-        } else if (nameIdx !== -1 && cells[nameIdx]) {
-          name = cells[nameIdx].trim();
-        }
-        if (!name) continue;
-        const alreadyQueued = playersToInsert.some(
-          (p) => p.name.trim().toLowerCase() === name.trim().toLowerCase()
-        );
-        if (alreadyQueued) continue;
+      let name = '';
+      if (fullNameIdx !== -1 && cells[fullNameIdx]) {
+        name = cells[fullNameIdx].trim();
+      } else if (firstNameIdx !== -1 && lastNameIdx !== -1) {
+        name = `${cells[firstNameIdx] || ''} ${cells[lastNameIdx] || ''}`.trim();
+      } else if (nameIdx !== -1 && cells[nameIdx]) {
+        name = cells[nameIdx].trim();
+      }
+      if (!name) continue;
 
-          let category = catIdx >= 0 ? cells[catIdx] : 'All-Rounder';
-          const catLower = category.toLowerCase();
-          if (catLower.includes('bat')) category = 'Batsman';
-          else if (catLower.includes('bowl')) category = 'Bowler';
-          else if (catLower.includes('keep') || catLower.includes('wk')) category = 'Wicket-Keeper';
-          else category = 'All-Rounder';
+      let category = catIdx >= 0 && cells[catIdx] ? cells[catIdx] : 'All-Rounder';
+      const catLower = category.toLowerCase();
+      if (catLower.includes('bat')) category = 'Batsman';
+      else if (catLower.includes('bowl')) category = 'Bowler';
+      else if (catLower.includes('keep') || catLower.includes('wk') || catLower.includes('wicket')) category = 'Wicket-Keeper';
+      else category = 'All-Rounder';
 
-          const year = parseAcademicYear(yearIdx >= 0 ? cells[yearIdx] : 1);
+      const year = parseAcademicYear(yearIdx >= 0 ? cells[yearIdx] : 1);
 
-          let basePrice;
-          if (priceIdx >= 0 && cells[priceIdx] && !isNaN(parseFloat(cells[priceIdx]))) {
-            basePrice = parseFloat(cells[priceIdx]);
-          } else {
-            basePrice = getAutoBasePrice(year);
-          }
+      let basePrice;
+      if (priceIdx >= 0 && cells[priceIdx] && !isNaN(parseFloat(cells[priceIdx]))) {
+        basePrice = parseFloat(cells[priceIdx]);
+      } else {
+        basePrice = getAutoBasePrice(year);
+      }
 
-          let image = '';
-          if (imgIdx >= 0 && cells[imgIdx]) {
-            let rawImg = cells[imgIdx].trim();
-            const urlMatch = rawImg.match(/https?:\/\/[^\s\)\]]+/);
-            if (urlMatch) rawImg = urlMatch[0];
-            const driveMatch = rawImg.match(/\/d\/([a-zA-Z0-9_-]+)/) || rawImg.match(/id=([a-zA-Z0-9_-]+)/);
-            if (driveMatch) {
-              image = `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
-            } else if (rawImg.startsWith('http')) {
-              image = rawImg;
-            }
-          }
-          if (!image) {
-            image = `https://via.placeholder.com/200x250?text=${encodeURIComponent(name)}`;
-          }
-
-          playersToInsert.push({
-            name,
-            category,
-            year,
-            basePrice,
-            image,
-            status: 'unsold',
-            isCaptain: false,
-            isApproved: asUnapproved ? false : true,
-            bidHistory: [],
-          });
+      let image = '';
+      if (imgIdx >= 0 && cells[imgIdx]) {
+        let rawImg = cells[imgIdx].trim();
+        const urlMatch = rawImg.match(/https?:\/\/[^\s\)\]]+/);
+        if (urlMatch) rawImg = urlMatch[0];
+        const driveMatch = rawImg.match(/\/d\/([a-zA-Z0-9_-]+)/) || rawImg.match(/id=([a-zA-Z0-9_-]+)/);
+        if (driveMatch) {
+          image = `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
+        } else if (rawImg.startsWith('http')) {
+          image = rawImg;
         }
       }
+      if (!image) {
+        image = `https://via.placeholder.com/200x250?text=${encodeURIComponent(name)}`;
+      }
+
+      const isDuplicateInBatch = playersToInsert.some(
+        (p) =>
+          p.name.trim().toLowerCase() === name.trim().toLowerCase() &&
+          p.year === year &&
+          p.category.toLowerCase() === category.toLowerCase() &&
+          p.image === image
+      );
+      if (isDuplicateInBatch) continue;
+
+      const escapedName = name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const existing = await Player.findOne({
+        name: new RegExp(`^${escapedName}$`, 'i'),
+        year: year,
+        category: category,
+        image: image,
+      });
+      if (existing) continue;
+
+      playersToInsert.push({
+        name,
+        category,
+        year,
+        basePrice,
+        image,
+        status: 'unsold',
+        isCaptain: false,
+        isApproved: asUnapproved ? false : true,
+        bidHistory: [],
+      });
+    }
+  }
     }
   }
 
