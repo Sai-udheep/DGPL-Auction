@@ -1,5 +1,12 @@
+const AppError = require('../utils/appError');
+
+const handleJWTError = () =>
+  new AppError('Invalid token. Please log in again!', 401);
+
+const handleJWTExpiredError = () =>
+  new AppError('Your session has expired! Please log in again.', 401);
+
 const handleDevError = (err, res) => {
-  // For auth errors, return a minimal response (no stack) but keep the actual message
   if (err.statusCode === 401) {
     return res.status(401).json({ status: 'fail', message: err.message });
   }
@@ -12,7 +19,6 @@ const handleDevError = (err, res) => {
 };
 
 const handleProdError = (err, res) => {
-  // For auth errors, keep the actual message (e.g., invalid credentials)
   if (err.statusCode === 401) {
     return res.status(401).json({ status: 'fail', message: err.message });
   }
@@ -33,6 +39,10 @@ const handleProdError = (err, res) => {
 const catchError = (err, req, res, next) => {
   err.statusCode = err.statusCode || 500;
   err.status = err.status || 'error';
+
+  if (err.name === 'JsonWebTokenError') err = handleJWTError();
+  if (err.name === 'TokenExpiredError') err = handleJWTExpiredError();
+
   if (process.env.NODE_ENV === 'development') handleDevError(err, res);
   else {
     handleProdError(err, res);

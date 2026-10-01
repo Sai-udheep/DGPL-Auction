@@ -1,12 +1,34 @@
-﻿import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { AuthContext } from "./authContextCore";
 import { API_URL } from "../config";
 
+// Client-side JWT expiration inspector
+export const isTokenExpired = (token) => {
+  if (!token || typeof token !== "string") return true;
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return true;
+    const payload = JSON.parse(atob(parts[1]));
+    if (payload.exp && Date.now() >= payload.exp * 1000) {
+      return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+};
+
 export default function AuthProvider({ children }) {
-  // Synchronous initialization from localStorage prevents flash-of-unauthenticated redirect on refresh
+  // Synchronous initialization with expiration check
   const [token, setToken] = useState(() => {
     try {
-      return localStorage.getItem("auth_token") || null;
+      const stored = localStorage.getItem("auth_token");
+      if (stored && !isTokenExpired(stored)) {
+        return stored;
+      }
+      localStorage.removeItem("auth_token");
+      localStorage.removeItem("auth_user");
+      return null;
     } catch {
       return null;
     }
@@ -14,6 +36,8 @@ export default function AuthProvider({ children }) {
 
   const [user, setUser] = useState(() => {
     try {
+      const storedToken = localStorage.getItem("auth_token");
+      if (!storedToken || isTokenExpired(storedToken)) return null;
       const raw = localStorage.getItem("auth_user");
       return raw ? JSON.parse(raw) : null;
     } catch {
@@ -25,7 +49,7 @@ export default function AuthProvider({ children }) {
     try {
       const storedToken = localStorage.getItem("auth_token");
       const storedUser = localStorage.getItem("auth_user");
-      return !!(storedToken && storedUser);
+      return Boolean(storedToken && !isTokenExpired(storedToken) && storedUser);
     } catch {
       return false;
     }
@@ -72,16 +96,21 @@ export default function AuthProvider({ children }) {
   // Validate stored token still maps to an existing user with proper Bearer header
   useEffect(() => {
     const verify = async () => {
-      if (!token || !user?._id) return;
+      if (!token) return;
+      if (isTokenExpired(token)) {
+        console.warn("[Auth] Token expired; signing out");
+        logout();
+        return;
+      }
+      if (!user?._id) return;
       try {
         const res = await fetch(`${API_URL}/api/v1/users/${user._id}`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         });
-        // Only clear auth if user was explicitly deleted (404)
-        if (res.status === 404) {
-          console.warn("[Auth] Stored user not found; clearing auth");
+        if (res.status === 401 || res.status === 404) {
+          console.warn("[Auth] Stored token rejected; clearing auth");
           logout();
         }
       } catch {
