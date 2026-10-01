@@ -204,72 +204,45 @@ Washington Sundar,All-Rounder,2,1.0,https://images.unsplash.com/photo-1522075469
     setSuccessMsg(null);
 
     try {
-      let uploadSucceeded = false;
-      let importedCount = 0;
+      const batchSize = 5;
+      let createdCount = 0;
 
-      // 1. First attempt bulk upload via /api/v1/players/upload
-      try {
-        const res = await fetch(`${API_URL}/api/v1/players/upload`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ players: previewData }),
-        });
-        if (res.ok) {
-          const data = await res.json().catch(() => ({}));
-          importedCount = data.count || previewData.length;
-          uploadSucceeded = true;
-        }
-      } catch (_) {
-        // Fall through to resilient direct creation
+      for (let i = 0; i < previewData.length; i += batchSize) {
+        const batch = previewData.slice(i, i + batchSize);
+        const results = await Promise.allSettled(
+          batch.map(async (p) => {
+            const singleRes = await fetch(`${API_URL}/api/v1/players`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                name: p.name.trim(),
+                category: p.category || "All-Rounder",
+                year: parseInt(p.year, 10) || 1,
+                basePrice: typeof p.basePrice === "number" ? p.basePrice : parseFloat(p.basePrice) || 0.5,
+                image: p.image || `https://via.placeholder.com/200x250?text=${encodeURIComponent(p.name)}`,
+                status: "unsold",
+                isCaptain: false,
+              }),
+            });
+            if (!singleRes.ok) {
+              const errJson = await singleRes.json().catch(() => ({}));
+              throw new Error(errJson.message || `Failed to create ${p.name}`);
+            }
+            return singleRes;
+          })
+        );
+
+        createdCount += results.filter((r) => r.status === "fulfilled").length;
       }
 
-      // 2. Resilient Direct Batch Import (works even if /upload fails or exceeds body limits)
-      if (!uploadSucceeded) {
-        console.warn("[Upload] Bulk endpoint unavailable; executing parallel direct player creation");
-        const batchSize = 5;
-        let createdCount = 0;
-
-        for (let i = 0; i < previewData.length; i += batchSize) {
-          const batch = previewData.slice(i, i + batchSize);
-          const results = await Promise.allSettled(
-            batch.map(async (p) => {
-              const singleRes = await fetch(`${API_URL}/api/v1/players`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                  name: p.name.trim(),
-                  category: p.category || "All-Rounder",
-                  year: parseInt(p.year, 10) || 1,
-                  basePrice: typeof p.basePrice === "number" ? p.basePrice : parseFloat(p.basePrice) || 0.5,
-                  image: p.image || `https://via.placeholder.com/200x250?text=${encodeURIComponent(p.name)}`,
-                  status: "unsold",
-                  isCaptain: false,
-                }),
-              });
-              if (!singleRes.ok) {
-                const errJson = await singleRes.json().catch(() => ({}));
-                throw new Error(errJson.message || `Failed to create ${p.name}`);
-              }
-              return singleRes;
-            })
-          );
-
-          createdCount += results.filter((r) => r.status === "fulfilled").length;
-        }
-
-        if (createdCount === 0) {
-          throw new Error("Failed to create players. Please ensure you are logged in as admin.");
-        }
-        importedCount = createdCount;
+      if (createdCount === 0) {
+        throw new Error("Failed to create players. Please check that you are signed in as Admin.");
       }
 
-      setSuccessMsg(`Successfully imported ${importedCount} of ${previewData.length} players!`);
+      setSuccessMsg(`Successfully imported ${createdCount} of ${previewData.length} players!`);
       setTimeout(() => {
         if (onUploadSuccess) onUploadSuccess();
         onClose();
