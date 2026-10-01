@@ -31,7 +31,7 @@ export default function CaptainsModal({ isOpen, onClose, onCaptainsUpdated }) {
     try {
       const [tRes, pRes] = await Promise.all([
         fetch(`${API_URL}/api/v1/teams`),
-        fetch(`${API_URL}/api/v1/players?limit=300`),
+        fetch(`${API_URL}/api/v1/players?includeCaptains=true&limit=500`),
       ]);
 
       if (!tRes.ok) throw new Error("Failed to load teams");
@@ -85,6 +85,8 @@ export default function CaptainsModal({ isOpen, onClose, onCaptainsUpdated }) {
       const targetPlayer = allPlayers.find((p) => String(p._id) === String(playerId));
 
       let serverAssignOk = false;
+      let lastErrMsg = null;
+
       // 1. Try server assign-captain endpoint
       try {
         const res = await fetch(`${API_URL}/api/v1/teams/${teamId}/assign-captain`, {
@@ -97,12 +99,17 @@ export default function CaptainsModal({ isOpen, onClose, onCaptainsUpdated }) {
         });
         if (res.ok) {
           serverAssignOk = true;
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          lastErrMsg = errData.message;
         }
-      } catch (_) {}
+      } catch (err) {
+        lastErrMsg = err.message;
+      }
 
-      // 2. If server endpoint isn't deployed yet, execute client-side direct update fallback
+      // 2. Direct client-side update fallback
       if (!serverAssignOk) {
-        console.warn("[Captains] Endpoint not ready; performing direct REST assignment fallback");
+        console.warn("[Captains] Endpoint failed/fallback:", lastErrMsg);
 
         // A. If team had an old captain that is different, revert them to unsold
         const oldCapId = targetTeam?.captain?._id || targetTeam?.captain;
@@ -143,7 +150,7 @@ export default function CaptainsModal({ isOpen, onClose, onCaptainsUpdated }) {
           throw new Error(errData.message || "Failed to update player captain status");
         }
 
-        // C. Update team: captain = playerId, budget = 100, add to players array
+        // C. Update team: captain = playerId, budget = 100, players array
         let playersArr = (targetTeam?.players || []).map((p) => (p._id || p).toString());
         if (oldCapId) playersArr = playersArr.filter((id) => id !== String(oldCapId));
         if (!playersArr.includes(String(playerId))) playersArr.push(String(playerId));

@@ -82,7 +82,13 @@ exports.assignCaptain = catchAsync(async (req, res, next) => {
     },
   });
 
-  // 3. Update team: set captain and ensure in players array
+  // 3. Clear newCaptain from any OTHER team if they had them as captain or player
+  await Team.updateMany(
+    { _id: { $ne: team._id }, captain: newCaptain._id },
+    { $unset: { captain: "" }, $pull: { players: newCaptain._id } }
+  );
+
+  // 4. Update team: set captain and ensure in players array
   const oldCaptainId = team.captain ? team.captain.toString() : null;
   let currentPlayers = (team.players || []).map((p) => (p._id || p).toString());
   if (oldCaptainId) {
@@ -97,12 +103,13 @@ exports.assignCaptain = catchAsync(async (req, res, next) => {
     {
       $set: {
         captain: newCaptain._id,
+        budget: 100,
         players: currentPlayers.map((id) => new mongoose.Types.ObjectId(id)),
       },
     }
   );
 
-  // 4. Update captain user account if exists
+  // 5. Update captain user account if exists
   try {
     const User = require('../models/userModel');
     await User.findOneAndUpdate(

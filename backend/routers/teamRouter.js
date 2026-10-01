@@ -1,6 +1,5 @@
 const express = require('express');
 const teamController = require('../controllers/teamController');
-const playerRouter = require('./playerRouter');
 const authController = require('../controllers/authController');
 const router = express.Router();
 
@@ -11,6 +10,15 @@ router
     authController.restrictTo('admin'),
     teamController.addPlayerToTeam
   );
+
+router
+  .route('/:id/assign-captain')
+  .post(
+    authController.protect,
+    authController.restrictTo('admin'),
+    teamController.assignCaptain
+  );
+
 router
   .route('/')
   .get(teamController.getAllTeams)
@@ -32,14 +40,6 @@ router
     authController.protect,
     authController.restrictTo('admin'),
     teamController.deleteTeam
-  );
-
-router
-  .route('/:id/assign-captain')
-  .post(
-    authController.protect,
-    authController.restrictTo('admin'),
-    teamController.assignCaptain
   );
 
 module.exports = router;

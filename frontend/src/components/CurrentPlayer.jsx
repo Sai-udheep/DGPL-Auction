@@ -192,82 +192,80 @@ const CurrentPlayer = ({ player: livePlayer, isAuctionActive = false, teams = []
       {/* 1. MOBILE COMPACT VIEW (< sm): ZERO SCROLL, THUMB-READY  */}
       {/* ======================================================== */}
       <div className="sm:hidden p-3 space-y-2.5 w-full">
-        {/* Player Snapshot: Avatar + Details Side-by-Side */}
-        <div className="flex items-center gap-2.5">
-          <div className="relative w-18 h-22 rounded-2xl overflow-hidden bg-black/40 border border-white/15 shrink-0 shadow-md">
+        {/* Player Snapshot: Large Photo + Details Side-by-Side */}
+        <div className="flex items-stretch gap-3">
+          {/* Prominent High-Impact Player Photo */}
+          <div className="relative w-32 h-44 rounded-2xl overflow-hidden bg-black/50 border-2 border-white/20 shrink-0 shadow-xl group">
             {image ? (
               <img
                 src={image}
                 alt={name}
                 className="w-full h-full object-cover object-center"
                 onError={(e) => {
-                  e.target.src = `https://via.placeholder.com/150x200?text=${encodeURIComponent(name)}`;
+                  e.target.src = `https://via.placeholder.com/300x400?text=${encodeURIComponent(name)}`;
                 }}
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-white/40">
-                <User className="w-7 h-7" />
+              <div className="w-full h-full flex items-center justify-center text-white/30">
+                <User className="w-12 h-12" />
               </div>
             )}
-            <div className="absolute top-1 left-1 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-black/70 backdrop-blur-md text-[8px] font-black text-amber-300">
+            <div className="absolute top-1.5 left-1.5 flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/75 backdrop-blur-md text-[9px] font-black text-amber-300 border border-white/10 shadow">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
               <span>LIVE</span>
             </div>
           </div>
 
-          <div className="min-w-0 flex-1 space-y-1">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.2 rounded-md border ${getCategoryColor(category)}`}>
-                {category}
-              </span>
-              {year && (
-                <span className="text-[10px] font-semibold text-white/50">
-                  {formatAcademicYear(year)}
+          {/* Details & Current Bid side-by-side with photo */}
+          <div className="min-w-0 flex-1 flex flex-col justify-between py-0.5">
+            <div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md border ${getCategoryColor(category)}`}>
+                  {category}
                 </span>
-              )}
+                {year && (
+                  <span className="text-[10px] font-bold text-white/50">
+                    {formatAcademicYear(year)}
+                  </span>
+                )}
+              </div>
+
+              <h2 className="text-base font-black text-white leading-tight font-brand line-clamp-2 mt-1.5">
+                {name}
+              </h2>
+
+              <p className="text-[11px] font-semibold text-white/40 mt-1">
+                Base: <span className="text-white/80 font-bold">{player.basePrice != null ? `${player.basePrice} Pts` : "-"}</span>
+              </p>
             </div>
 
-            <h2 className="text-base font-black text-white truncate tracking-wide font-brand">
-              {name}
-            </h2>
-
-            <p className="text-[10px] font-semibold text-white/40">
-              Base: <span className="text-white/80">{player.basePrice != null ? `${player.basePrice} Pts` : "-"}</span>
-            </p>
-          </div>
-        </div>
-
-        {/* Current Bid & Holding Team Box */}
-        <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] shadow-inner space-y-1.5">
-          <div className="flex items-baseline justify-between">
-            <div>
-              <span className="text-[9px] uppercase font-bold text-white/40 block">Current Bid</span>
+            {/* Current Bid & Leading Team Snapshot */}
+            <div className="p-2 rounded-xl bg-white/[0.05] border border-white/10 shadow-inner">
+              <span className="text-[9px] uppercase font-bold text-white/40 block leading-none">
+                Current Bid
+              </span>
               <div className="flex items-baseline gap-1 mt-0.5">
                 <span className="text-2xl font-black text-emerald-400 leading-none">
                   {currentBid != null ? currentBid : "--"}
                 </span>
-                <span className="text-xs font-bold text-emerald-300 uppercase">Pts</span>
+                <span className="text-[11px] font-black text-emerald-300 uppercase">Pts</span>
               </div>
-            </div>
-
-            <div className="text-right max-w-[55%]">
-              <span className="text-[9px] uppercase font-bold text-white/40 block">Holding Team</span>
-              <span className="text-xs font-bold text-white truncate block mt-0.5">
+              <span className="text-[10px] font-bold text-white/80 truncate block mt-1">
                 {leadingTeamName || "No Bids Yet"}
               </span>
             </div>
           </div>
-
-          {/* Captain Purse info */}
-          {isTeamOwner && (
-            <div className="pt-1 border-t border-white/[0.06] flex items-center justify-between text-[10px]">
-              <span className="text-white/50">Your Purse:</span>
-              <span className={`font-bold ${isOutOfBudget ? "text-rose-400" : "text-emerald-400"}`}>
-                {typeof userTeamBudget === "number" ? `${userTeamBudget.toFixed(2).replace(/\.00$/, "")} Pts` : "-"}
-              </span>
-            </div>
-          )}
         </div>
+
+        {/* Captain Purse info */}
+        {isTeamOwner && (
+          <div className="px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-between text-[11px]">
+            <span className="text-white/50 font-medium">Your Remaining Purse:</span>
+            <span className={`font-black ${isOutOfBudget ? "text-rose-400" : "text-emerald-400"}`}>
+              {typeof userTeamBudget === "number" ? `${userTeamBudget.toFixed(2).replace(/\.00$/, "")} Pts` : "-"}
+            </span>
+          </div>
+        )}
 
         {/* Big Place Bid Action for Mobile Captains */}
         {isTeamOwner ? (
@@ -275,7 +273,7 @@ const CurrentPlayer = ({ player: livePlayer, isAuctionActive = false, teams = []
             <button
               onClick={!isLeadingTeam && !isOutOfBudget ? handleBid : undefined}
               disabled={isLeadingTeam || isOutOfBudget}
-              className={`w-full py-3 px-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-all duration-200 shadow-xl cursor-pointer ${
+              className={`w-full py-3.5 px-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-all duration-200 shadow-xl cursor-pointer ${
                 isLeadingTeam
                   ? "bg-white/[0.08] text-white/40 border border-white/10 cursor-not-allowed"
                   : isOutOfBudget
@@ -299,12 +297,12 @@ const CurrentPlayer = ({ player: livePlayer, isAuctionActive = false, teams = []
             </button>
           </div>
         ) : (
-          <div className="p-2 rounded-xl bg-white/[0.02] border border-white/[0.05] text-center text-[10px] text-white/40">
+          <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.05] text-center text-[10px] text-white/40">
             Sign in as Team Captain to place bids
           </div>
         )}
 
-        {/* Mini Bid History (Last 2 bids, compact ticker) */}
+        {/* Mini Bid History (Last 2-3 bids, compact ticker) */}
         {sortedBids.length > 0 && (
           <div className="space-y-1">
             <span className="text-[9px] uppercase font-bold text-white/40 tracking-wider block">

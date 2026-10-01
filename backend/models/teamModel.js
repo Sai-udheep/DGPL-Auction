@@ -51,24 +51,33 @@ teamSchema.pre('findOneAndUpdate', function (next) {
     // Support both direct set and $set
     const newCaptain = update.captain || (update.$set && update.$set.captain);
     if (newCaptain) {
-      // Use $addToSet to avoid duplicates
-      if (!update.$addToSet) update.$addToSet = {};
-      // If players already has an $addToSet, merge
-      const addToSet = update.$addToSet;
-      if (addToSet.players && addToSet.players.$each) {
-        // Already using $each → append captain if not present
-        const arr = addToSet.players.$each;
-        if (!arr.some((p) => p && p.toString() === newCaptain.toString())) {
-          arr.push(newCaptain);
+      const capStr = newCaptain.toString();
+      // If update or update.$set explicitly specifies players array, ensure captain is in it
+      if (Array.isArray(update.players)) {
+        if (!update.players.some((p) => p && p.toString() === capStr)) {
+          update.players.push(newCaptain);
         }
-      } else if (addToSet.players && !addToSet.players.$each) {
-        // Single value present; convert to $each array if needed
-        const existing = addToSet.players;
-        if (existing.toString() !== newCaptain.toString()) {
-          addToSet.players = { $each: [existing, newCaptain] };
+      } else if (update.$set && Array.isArray(update.$set.players)) {
+        if (!update.$set.players.some((p) => p && p.toString() === capStr)) {
+          update.$set.players.push(newCaptain);
         }
       } else {
-        addToSet.players = newCaptain;
+        // Only use $addToSet if players is NOT in $set / direct update
+        if (!update.$addToSet) update.$addToSet = {};
+        const addToSet = update.$addToSet;
+        if (addToSet.players && addToSet.players.$each) {
+          const arr = addToSet.players.$each;
+          if (!arr.some((p) => p && p.toString() === capStr)) {
+            arr.push(newCaptain);
+          }
+        } else if (addToSet.players && !addToSet.players.$each) {
+          const existing = addToSet.players;
+          if (existing.toString() !== capStr) {
+            addToSet.players = { $each: [existing, newCaptain] };
+          }
+        } else {
+          addToSet.players = newCaptain;
+        }
       }
       this.setUpdate(update);
     }

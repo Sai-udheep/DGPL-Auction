@@ -99,10 +99,10 @@ export default function AdminLiveStage({
               <img
                 src={player.image}
                 alt={player.name}
-                className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border-2 border-amber-400/60 shadow-xl"
+                className="w-24 h-28 sm:w-28 sm:h-32 rounded-2xl object-cover border-2 border-amber-400/60 shadow-xl"
               />
             ) : (
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-white/40">
+              <div className="w-24 h-28 sm:w-28 sm:h-32 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-white/40">
                 <User className="w-8 h-8" />
               </div>
             )}
