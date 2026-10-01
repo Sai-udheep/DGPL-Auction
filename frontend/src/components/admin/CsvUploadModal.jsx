@@ -156,25 +156,138 @@ Rishabh Pant,Wicket-Keeper,2,1.0,https://images.unsplash.com/photo-1492562080023
       return;
     }
 
-    // 2. CSV format
-    const lines = trimmed.split(/\r?\n/).filter((l) => l.trim().length > 0);
-    if (lines.length < 2) {
-      setError("CSV must have a header row and at least 1 player entry.");
+    const lines = trimmed.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+    if (lines.length === 0) {
       setPreviewData([]);
       return;
     }
 
-    const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/['"]/g, ""));
+    // 2. Vertical Google Forms copy-paste detection (1 field per line)
+    let isVerticalHeaders = false;
+    let numVerticalHeaders = 0;
+    for (let i = 0; i < Math.min(15, lines.length); i++) {
+      const l = lines[i];
+      if (/\d{1,2}\/\d{1,2}\/\d{2,4}/.test(l) || (l.includes("@") && !l.toLowerCase().includes("address"))) {
+        numVerticalHeaders = i;
+        isVerticalHeaders = true;
+        break;
+      }
+    }
+
+    if (isVerticalHeaders && numVerticalHeaders >= 3) {
+      const headerNames = lines.slice(0, numVerticalHeaders).map((h) => h.toLowerCase());
+      const dataLines = lines.slice(numVerticalHeaders);
+      const parsed = [];
+
+      for (let i = 0; i < dataLines.length; i += numVerticalHeaders) {
+        const chunk = dataLines.slice(i, i + numVerticalHeaders);
+        if (chunk.length < 3) continue;
+
+        const entry = {};
+        for (let j = 0; j < Math.min(headerNames.length, chunk.length); j++) {
+          entry[headerNames[j]] = chunk[j];
+        }
+
+        const nameKey = Object.keys(entry).find(
+          (k) => (k.includes("name") || k.includes("player")) && !k.includes("timestamp")
+        );
+        const name = nameKey ? entry[nameKey].trim() : "";
+        if (!name) continue;
+
+        const roleKey = Object.keys(entry).find((k) =>
+          k.includes("role") || k.includes("category") || k.includes("skill") || k.includes("playing")
+        );
+        const category = normalizeCategory(roleKey ? entry[roleKey] : "All-Rounder");
+
+        const yearKey = Object.keys(entry).find((k) =>
+          k.includes("year") || k.includes("academic") || k.includes("batch") || k.includes("participation")
+        );
+        let year = 1;
+        if (yearKey && entry[yearKey]) {
+          const yMatch = entry[yearKey].match(/\d+/);
+          if (yMatch) year = parseInt(yMatch[0], 10);
+        }
+        const basePrice = getAutoBasePrice(year);
+
+        const photoKey = Object.keys(entry).find((k) =>
+          k.includes("photo") || k.includes("image") || k.includes("picture") || k.includes("upload") || k.includes("link") || k.includes("url")
+        );
+        let image = photoKey ? entry[photoKey] : "";
+        const urlMatch = image.match(/https?:\/\/[^\s\)\]]+/);
+        if (urlMatch) image = urlMatch[0];
+        const driveMatch = image.match(/\/d\/([a-zA-Z0-9_-]+)/) || image.match(/id=([a-zA-Z0-9_-]+)/);
+        if (driveMatch) {
+          image = `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
+        }
+        if (!image) {
+          image = `https://via.placeholder.com/200x250?text=${encodeURIComponent(name)}`;
+        }
+
+        parsed.push({
+          name,
+          category,
+          year,
+          basePrice,
+          image,
+        });
+      }
+
+      if (parsed.length > 0) {
+        setPreviewData(parsed);
+        return;
+      }
+    }
+
+    // 3. Tab-separated values (TSV from Google Sheets copy) or Comma-separated (CSV)
+    const delimiter = lines[0].includes("\t") ? "\t" : ",";
+    const headers = lines[0].split(delimiter).map((h) => h.trim().toLowerCase().replace(/['"]/g, ""));
     const nameIdx = headers.findIndex((h) => (h.includes("name") || h.includes("player")) && !h.includes("timestamp"));
     const catIdx = headers.findIndex((h) => h.includes("role") || h.includes("category") || h.includes("skill") || h.includes("playing"));
     const yearIdx = headers.findIndex((h) => h.includes("year") || h.includes("batch") || h.includes("academic") || h.includes("participation"));
     const priceIdx = headers.findIndex((h) => h.includes("price") || h.includes("base") || h.includes("points"));
-    const imgIdx = headers.findIndex(
-      (h) => h.includes("photo") || h.includes("image") || h.includes("picture") || h.includes("link") || h.includes("url") || h.includes("upload")
-    );
+    const imgIdx = headers.findIndex((h) => h.includes("photo") || h.includes("image") || h.includes("picture") || h.includes("link") || h.includes("url") || h.includes("upload"));
 
     if (nameIdx === -1) {
-      setError('Missing "Name" or "Full Name" header column in CSV.');
+      // 4. Freeform fallback scan (e.g. without headers)
+      const freeform = [];
+      let cur = {};
+      for (const l of lines) {
+        if (l.includes("@")) {
+          if (cur.name) freeform.push(cur);
+          cur = {};
+        } else if (/\b(1st|2nd|3rd|4th|\d)\s*Year\b/i.test(l)) {
+          const ym = l.match(/\d+/);
+          cur.year = ym ? parseInt(ym[0], 10) : 1;
+        } else if (/\b(Batsman|Bowler|All.?Rounder|Wicket.?Keeper)\b/i.test(l)) {
+          cur.category = normalizeCategory(l);
+        } else if (/https?:\/\//i.test(l)) {
+          const urlMatch = l.match(/https?:\/\/[^\s\)\]]+/);
+          let img = urlMatch ? urlMatch[0] : "";
+          const dm = img.match(/\/d\/([a-zA-Z0-9_-]+)/) || img.match(/id=([a-zA-Z0-9_-]+)/);
+          if (dm) img = `https://lh3.googleusercontent.com/d/${dm[1]}`;
+          cur.image = img;
+        } else if (!cur.name && l.length > 1 && !/\d{1,2}\/\d{1,2}\/\d{2,4}/.test(l) && !l.toLowerCase().includes("pending") && !l.toLowerCase().includes("received")) {
+          cur.name = l;
+        }
+      }
+      if (cur.name) freeform.push(cur);
+
+      if (freeform.length > 0) {
+        const list = freeform.map((p) => {
+          const y = p.year || 1;
+          return {
+            name: p.name,
+            category: normalizeCategory(p.category || "All-Rounder"),
+            year: y,
+            basePrice: getAutoBasePrice(y),
+            image: p.image || `https://via.placeholder.com/200x250?text=${encodeURIComponent(p.name)}`,
+          };
+        });
+        setPreviewData(list);
+        return;
+      }
+
+      setError('Could not identify a "Full Name" or player column. Please check your pasted text.');
       setPreviewData([]);
       return;
     }
@@ -183,7 +296,10 @@ Rishabh Pant,Wicket-Keeper,2,1.0,https://images.unsplash.com/photo-1492562080023
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
-      const cells = line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+      const cells = delimiter === "\t"
+        ? line.split("\t").map((c) => c.trim().replace(/^"|"$/g, ""))
+        : (line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split(",")).map((c) => c.trim().replace(/^"|"$/g, ""));
+
       const name = cells[nameIdx];
       if (!name) continue;
 
@@ -202,9 +318,14 @@ Rishabh Pant,Wicket-Keeper,2,1.0,https://images.unsplash.com/photo-1492562080023
       }
 
       let image = imgIdx >= 0 && cells[imgIdx] ? cells[imgIdx] : "";
+      const urlMatch = image.match(/https?:\/\/[^\s\)\]]+/);
+      if (urlMatch) image = urlMatch[0];
       const driveMatch = image.match(/\/d\/([a-zA-Z0-9_-]+)/) || image.match(/id=([a-zA-Z0-9_-]+)/);
       if (driveMatch) {
         image = `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
+      }
+      if (!image) {
+        image = `https://via.placeholder.com/200x250?text=${encodeURIComponent(name)}`;
       }
 
       parsed.push({
