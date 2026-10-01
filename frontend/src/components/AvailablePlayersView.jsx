@@ -2,7 +2,8 @@
 import { Link } from "react-router-dom";
 import { formatAcademicYear } from "../utils/formatters";
 
-const AvailablePlayersView = ({ players = [] }) => {
+const AvailablePlayersView = ({ players, availablePlayers }) => {
+  const displayPlayers = players || availablePlayers || [];
   const formatPts = (val) => (val || val === 0 ? `${val} Pts` : "-");
 
   const getCategoryColor = (cat) => {
@@ -22,13 +23,13 @@ const AvailablePlayersView = ({ players = [] }) => {
 
   return (
     <div>
-      {players.length === 0 ? (
+      {displayPlayers.length === 0 ? (
         <div className="glass-card p-8 text-center text-white/50 text-xs">
           No available players in pool.
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {players.map((player) => {
+          {displayPlayers.map((player) => {
             const isCaptain = player.isCaptain;
             return (
               <div

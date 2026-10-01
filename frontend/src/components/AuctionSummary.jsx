@@ -32,19 +32,17 @@ const AuctionSummary = () => {
           ? { Authorization: `Bearer ${token}` }
           : undefined;
         const base = API_URL;
-        const [teamsRes, playersRes, unsoldRes] = await Promise.all([
+        const [teamsRes, playersRes] = await Promise.all([
           fetch(`${base}/api/v1/teams`, { headers }),
-          fetch(`${base}/api/v1/players`, { headers }),
-          fetch(`${base}/api/v1/players?status=unsold&markedUnsold=false`, { headers }),
+          fetch(`${base}/api/v1/players?limit=500`, { headers }),
         ]);
-        if (!teamsRes.ok || !playersRes.ok || !unsoldRes.ok) {
+        if (!teamsRes.ok || !playersRes.ok) {
           throw new Error("Failed to load auction data");
         }
         const teamsData = await teamsRes.json();
         const playersData = await playersRes.json();
-        const unsoldData = await unsoldRes.json();
         if (isCancelled) return;
-        // Expecting shape { data: { teams: [...] }} or similar; normalize
+
         const rawTeams =
           teamsData.data?.teams ||
           teamsData.data?.docs ||
@@ -55,14 +53,16 @@ const AuctionSummary = () => {
           playersData.data?.docs ||
           playersData.data ||
           playersData;
-        const rawUnsold =
-          unsoldData.data?.players ||
-          unsoldData.data?.docs ||
-          unsoldData.data ||
-          unsoldData;
+
+        const allPlayers = Array.isArray(rawPlayers) ? rawPlayers : [];
         setTeams(Array.isArray(rawTeams) ? rawTeams : []);
-        setPlayers(Array.isArray(rawPlayers) ? rawPlayers : []);
-        setAvailablePlayers(Array.isArray(rawUnsold) ? rawUnsold : []);
+        setPlayers(allPlayers);
+
+        // Derive available players from complete pool: not captains, not assigned to team, not sold, not marked permanently unsold
+        const available = allPlayers.filter(
+          (p) => !p.isCaptain && !p.team && p.status !== "sold" && !p.markedUnsold
+        );
+        setAvailablePlayers(available);
       } catch (err) {
         if (!isCancelled) setError(err.message || "Unknown error");
       } finally {
@@ -140,7 +140,7 @@ const AuctionSummary = () => {
         onChange={setSelectedTeamId}
       />
       {selectedTeamId === "available" ? (
-        <AvailablePlayersView availablePlayers={availablePlayers} />
+        <AvailablePlayersView players={availablePlayers} availablePlayers={availablePlayers} />
       ) : selectedTeamId ? (
         <TeamDetailView team={selectedTeam} teamPlayers={selectedTeamPlayers} />
       ) : (

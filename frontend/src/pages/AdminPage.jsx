@@ -596,7 +596,7 @@ export default function AdminPage() {
 
   // Derive player pools for the selected year
   const availablePlayers = players.filter(
-    (p) => p.status === "unsold" && !p.markedUnsold
+    (p) => !p.isCaptain && !p.team && p.status !== "sold" && !p.markedUnsold
   );
   const unsoldPool = players.filter(
     (p) => p.status === "unsold" && p.markedUnsold
@@ -786,7 +786,7 @@ export default function AdminPage() {
 
   // Captain updated handler
   const handleCaptainAssigned = () => {
-    fetchInitialData();
+    fetchPlayers();
   };
 
   // Start auction from Random Draw modal
@@ -1210,7 +1210,7 @@ export default function AdminPage() {
       <CsvUploadModal
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
-        onUploadSuccess={fetchInitialData}
+        onUploadSuccess={fetchPlayers}
       />
 
       {/* Random Draw Modal */}
