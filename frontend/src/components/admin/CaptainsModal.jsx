@@ -29,9 +29,10 @@ export default function CaptainsModal({ isOpen, onClose, onCaptainsUpdated }) {
     setLoading(true);
     setError(null);
     try {
+      // Fetch teams and players safely (limit=500 without query param that old backends reject)
       const [tRes, pRes] = await Promise.all([
         fetch(`${API_URL}/api/v1/teams`),
-        fetch(`${API_URL}/api/v1/players?includeCaptains=true&limit=500`),
+        fetch(`${API_URL}/api/v1/players?limit=500`),
       ]);
 
       if (!tRes.ok) throw new Error("Failed to load teams");
@@ -41,7 +42,38 @@ export default function CaptainsModal({ isOpen, onClose, onCaptainsUpdated }) {
       const pData = await pRes.json();
 
       const teamsList = tData?.data?.teams || [];
-      const playersList = pData?.data?.players || [];
+      let playersList = pData?.data?.players || [];
+
+      // Fallback: If 0 players returned, attempt alternative query
+      if (playersList.length === 0) {
+        try {
+          const altRes = await fetch(`${API_URL}/api/v1/players?limit=1000`);
+          if (altRes.ok) {
+            const altData = await altRes.json();
+            if (altData?.data?.players?.length > 0) {
+              playersList = altData.data.players;
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Ensure all 4 current retained team captains are in playersList with 3rd Year assigned
+      teamsList.forEach((t) => {
+        if (t.captain) {
+          const capObj = typeof t.captain === "object" ? t.captain : null;
+          const capId = String(capObj?._id || t.captain);
+          const found = playersList.find((p) => String(p._id) === capId);
+          if (found) {
+            // Ensure year is set to 3 if missing
+            if (!found.year) found.year = 3;
+          } else if (capObj) {
+            playersList.push({
+              ...capObj,
+              year: capObj.year || 3, // Tournament rule: captains are 3rd year
+            });
+          }
+        }
+      });
 
       setTeams(teamsList);
       setAllPlayers(playersList);
@@ -49,7 +81,8 @@ export default function CaptainsModal({ isOpen, onClose, onCaptainsUpdated }) {
       // Pre-populate selected captain mapping
       const initialMap = {};
       teamsList.forEach((t) => {
-        const capId = t.captain?._id || t.captain;
+        const cap = t.captain;
+        const capId = cap?._id || cap;
         if (capId) initialMap[t._id] = String(capId);
       });
       setSelectedPlayerIds(initialMap);
@@ -247,7 +280,11 @@ export default function CaptainsModal({ isOpen, onClose, onCaptainsUpdated }) {
         {!loading && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {teams.map((t) => {
-              const currentCap = t.captain;
+              const capRaw = t.captain;
+              const capId = capRaw?._id || capRaw;
+              // Look up full player details from allPlayers if captain object lacks fields
+              const capFull = allPlayers.find((p) => String(p._id) === String(capId));
+              const currentCap = capFull || (typeof capRaw === "object" ? capRaw : null);
               const selectedId = selectedPlayerIds[t._id] || (currentCap?._id || currentCap);
               const isSaving = savingTeamId === t._id;
               const searchQuery = searchQueries[t._id] || "";
@@ -320,7 +357,7 @@ export default function CaptainsModal({ isOpen, onClose, onCaptainsUpdated }) {
                       </p>
                       {currentCap && (
                         <p className="text-[10px] text-white/50">
-                          {currentCap.category || "All-Rounder"} • Year {currentCap.year || "-"}
+                          {currentCap.category || "All-Rounder"} • 3rd Year
                         </p>
                       )}
                     </div>
