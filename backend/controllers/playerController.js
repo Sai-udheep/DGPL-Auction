@@ -223,7 +223,7 @@ exports.uploadPlayers = catchAsync(async (req, res, next) => {
     return next(new AppError('No valid players found in the uploaded file.', 400));
   }
 
-  const created = await Player.insertMany(playersToInsert);
+  const created = await Promise.all(playersToInsert.map((p) => Player.create(p)));
 
   res.status(201).json({
     status: 'success',
