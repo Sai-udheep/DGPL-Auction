@@ -97,7 +97,7 @@ export default function RandomDrawModal({
             type="button"
           >
             <Play className="w-4 h-4 fill-slate-950" />
-            <span>{isStarting ? "Starting Live Auction..." : `Start Auction for ${player.name.split(" ")[0]}`}</span>
+            <span>{isStarting ? "Starting Live Auction..." : `Start Auction for ${player.name}`}</span>
           </button>
 
           {/* Draw Another Button */}
