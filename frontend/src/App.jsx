@@ -257,7 +257,13 @@ function App() {
             element={
               <>
                 <NavTabs activeTab={activeTab} onChange={setActiveTab} />
-                <main className="container mx-auto px-4 pb-20 max-w-6xl">
+                <main
+                  className={`container mx-auto px-2 sm:px-4 ${
+                    activeTab === "live"
+                      ? "max-h-[calc(100dvh-125px)] overflow-hidden sm:max-h-none sm:overflow-visible pb-2 sm:pb-20"
+                      : "pb-20"
+                  } max-w-6xl`}
+                >
                   {activeTab === "live" && (
                     <div className="flex justify-center w-full">
                       {recentlySold && !currentPlayer ? (

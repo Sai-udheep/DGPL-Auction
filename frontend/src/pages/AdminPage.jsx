@@ -609,7 +609,7 @@ export default function AdminPage() {
   const nonSoldPlayers = players.filter((p) => p.status !== "sold");
 
   // Export entire tournament rosters to CSV
-    const handleExportCsv = async () => {
+      const handleExportCsv = async () => {
     setExporting(true);
     setAuctionMessage(null);
     try {
@@ -627,32 +627,68 @@ export default function AdminPage() {
         throw new Error("No teams found to export");
       }
 
-      // Build roster for each team (including captain)
+      // Build roster for each team (comprehensive captain inclusion)
       const teamRosters = allT.map((t) => {
         const tId = String(t._id);
+        const tName = (t.name || "").trim().toLowerCase();
         const capId = t.captain ? String(t.captain._id || t.captain) : null;
 
-        // Find all players assigned or sold to this team
+        // 1. Players assigned or sold to this team
         let tPlayers = allP.filter((p) => {
-          const pTeamId = String(p.team?._id || p.team);
-          return pTeamId === tId || (capId && String(p._id) === capId);
+          const pTeamId = String(p.team?._id || p.team || "");
+          const pTeamName = (p.teamName || p.team?.name || "").trim().toLowerCase();
+          return (
+            pTeamId === tId ||
+            (pTeamName && pTeamName === tName) ||
+            (capId && String(p._id) === capId)
+          );
         });
 
-        // Ensure captain is explicitly included and marked
-        if (capId && !tPlayers.some((p) => String(p._id) === capId)) {
-          const capPlayer = allP.find((p) => String(p._id) === capId);
-          if (capPlayer) {
-            tPlayers.unshift({ ...capPlayer, isCaptain: true, finalBidPrice: 0 });
+        // 2. Locate captain in allP
+        let teamCaptain = null;
+        if (capId) {
+          teamCaptain = allP.find((p) => String(p._id) === capId);
+        }
+        if (!teamCaptain) {
+          teamCaptain = allP.find((p) => {
+            const pTeamId = String(p.team?._id || p.team || "");
+            const pTeamName = (p.teamName || p.team?.name || "").trim().toLowerCase();
+            return p.isCaptain && (pTeamId === tId || (pTeamName && pTeamName === tName));
+          });
+        }
+
+        // Add or ensure captain in squad
+        if (teamCaptain) {
+          const capObj = {
+            ...teamCaptain,
+            isCaptain: true,
+            finalBidPrice: teamCaptain.finalBidPrice ?? 0,
+          };
+          const existingIdx = tPlayers.findIndex((p) => String(p._id) === String(teamCaptain._id));
+          if (existingIdx >= 0) {
+            tPlayers[existingIdx] = capObj;
+          } else {
+            tPlayers.unshift(capObj);
           }
         }
 
-        // Sort: captain first, then by bid price descending
+        // Ensure isCaptain flag is true for captain
         tPlayers = tPlayers.map((p) => {
-          const isCap = p.isCaptain || (capId && String(p._id) === capId);
-          return isCap ? { ...p, isCaptain: true, finalBidPrice: p.finalBidPrice ?? 0 } : p;
+          const isCap =
+            p.isCaptain ||
+            (capId && String(p._id) === capId) ||
+            (teamCaptain && String(p._id) === String(teamCaptain._id));
+          return isCap
+            ? { ...p, isCaptain: true, finalBidPrice: p.finalBidPrice ?? 0 }
+            : p;
         });
 
-        tPlayers.sort((a, b) => (b.isCaptain ? 1 : 0) - (a.isCaptain ? 1 : 0));
+        // Sort: Captain ALWAYS at top, then other players by bid amount
+        tPlayers.sort((a, b) => {
+          if (a.isCaptain && !b.isCaptain) return -1;
+          if (!a.isCaptain && b.isCaptain) return 1;
+          return (b.finalBidPrice || 0) - (a.finalBidPrice || 0);
+        });
 
         return {
           team: t,
@@ -660,26 +696,26 @@ export default function AdminPage() {
         };
       });
 
-      // Find maximum squad size to align side-by-side columns
+      // Maximum squad size for aligning side-by-side columns
       const maxSquadSize = Math.max(1, ...teamRosters.map((tr) => tr.players.length));
 
       const csvRows = [];
 
-      // Row 1: Team Names across columns side-by-side
+      // Row 1: Team Names side-by-side
       const row1 = [];
       teamRosters.forEach((tr) => {
         row1.push(`"${tr.team.name}"`, '""', '""', '""', '""');
       });
       csvRows.push(row1.join(","));
 
-      // Row 2: Sub-headers for each team
+      // Row 2: Headers for each team
       const row2 = [];
       teamRosters.forEach(() => {
         row2.push('"Player Name"', '"Category"', '"Academic Year"', '"Points Paid"', '""');
       });
       csvRows.push(row2.join(","));
 
-      // Data Rows: Side-by-side player rows
+      // Data Rows: Slot by slot across all teams side-by-side
       for (let i = 0; i < maxSquadSize; i++) {
         const row = [];
         teamRosters.forEach((tr) => {
@@ -701,52 +737,6 @@ export default function AdminPage() {
         csvRows.push(row.join(","));
       }
 
-      // Summary Row: Total Players & Remaining Purse
-      csvRows.push('""');
-      const summaryRow = [];
-      teamRosters.forEach((tr) => {
-        summaryRow.push(
-          `"Total Squad: ${tr.players.length}"`,
-          `"Remaining Purse: ${tr.team.budget ?? 100} Pts"`,
-          '""',
-          '""',
-          '""'
-        );
-      });
-      csvRows.push(summaryRow.join(","));
-
-      // Empty spacing before unsold pool
-      csvRows.push('""');
-      csvRows.push('""');
-
-      // --- UNSOLD PLAYERS SECTION AT LAST ---
-      csvRows.push('"=== UNSOLD PLAYERS POOL ==="');
-      csvRows.push('"Player Name","Category","Academic Year","Base Price","Status"');
-
-      const soldPlayerIds = new Set();
-      teamRosters.forEach((tr) => {
-        tr.players.forEach((p) => soldPlayerIds.add(String(p._id)));
-      });
-
-      const unsoldPlayers = allP.filter(
-        (p) => !soldPlayerIds.has(String(p._id)) && p.status !== "sold"
-      );
-
-      if (unsoldPlayers.length === 0) {
-        csvRows.push('"No unsold players in tournament","","","",""');
-      } else {
-        unsoldPlayers.forEach((p) => {
-          const status = p.markedUnsold ? "Marked Unsold" : "Available";
-          csvRows.push(
-            `"${p.name.replace(/"/g, '""')}"`,
-            `"${p.category || "All-Rounder"}"`,
-            `"Year ${p.year || 1}"`,
-            `"${p.basePrice ?? 0} Pts"`,
-            `"${status}"`
-          );
-        });
-      }
-
       const csvContent = csvRows.join(String.fromCharCode(10));
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
@@ -760,7 +750,7 @@ export default function AdminPage() {
       link.click();
       document.body.removeChild(link);
 
-      setAuctionMessage("Side-by-side tournament CSV exported successfully!");
+      setAuctionMessage("Side-by-side team rosters CSV exported successfully!");
     } catch (err) {
       setAuctionMessage("Failed to export CSV: " + err.message);
     } finally {
@@ -897,7 +887,7 @@ export default function AdminPage() {
             type="button"
             title="Export complete tournament teams and rosters as CSV"
           >
-            <Download className="w-3.5 h-3.5 text-white/70 shrink-0" />
+            <Upload className="w-3.5 h-3.5 text-white/70 shrink-0" />
             <span>{exporting ? "Exporting..." : "Export CSV"}</span>
           </button>
 
@@ -907,7 +897,7 @@ export default function AdminPage() {
             type="button"
             title="Upload players via CSV spreadsheet"
           >
-            <Upload className="w-3.5 h-3.5 text-white/70 shrink-0" />
+            <Download className="w-3.5 h-3.5 text-white/70 shrink-0" />
             <span>Upload Players</span>
           </button>
 
@@ -1093,6 +1083,34 @@ export default function AdminPage() {
               />
             </div>
           )}
+        
+          {/* Sold Pool for this Academic Year */}
+          {soldPlayers.length > 0 && (
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center gap-2 px-1">
+                <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                <h3 className="text-xs font-bold text-emerald-300 uppercase tracking-widest">
+                  Sold Pool ({soldPlayers.length})
+                </h3>
+                <p className="text-[10px] text-white/30 ml-1">
+                  • Players acquired by teams for Year {selectedYear}
+                </p>
+              </div>
+              <PlayerTable
+                players={soldPlayers}
+                onStartAuction={null}
+                onSellPlayer={null}
+                onMarkUnsold={null}
+                onDeletePlayer={handleDeletePlayer}
+                actionLoadingId={actionLoadingId}
+                deletingPlayerId={deletingPlayerId}
+                currentAuctionPlayerId={currentAuctionPlayerId}
+                isSoldPool={true}
+                tableTitle="Sold Pool"
+              />
+            </div>
+          )}
+
         </>
       )}
 
