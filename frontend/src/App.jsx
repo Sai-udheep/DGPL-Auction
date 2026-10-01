@@ -37,6 +37,7 @@ function App() {
       setRecentlyUnsold(null);
       setCurrentPlayer(player);
       setActiveAuctionCall(null);
+      setToasts((prev) => prev.filter((t) => t.id !== "auction_call_toast"));
       setIsAuctionActive(true);
     };
 
@@ -89,6 +90,7 @@ function App() {
         });
         setCurrentPlayer(null);
         setActiveAuctionCall(null);
+      setToasts((prev) => prev.filter((t) => t.id !== "auction_call_toast"));
         const isCaptain = user?.role === "captain" || Boolean(user?.team);
         if (isCaptain) playSoldSound();
         setTimeout(() => {
@@ -162,18 +164,27 @@ function App() {
       }
       const callLabels = { 1: "Going Once...", 2: "Going Twice...", 3: "FINAL CALL!" };
       const label = callLabels[payload?.callNumber] || payload?.callText || "Auction Call";
+      const callToastId = "auction_call_toast";
+
+      // Replace previous call toast instead of stacking 20 notifications
       setToasts((prev) => [
-        ...prev,
+        ...prev.filter((t) => t.id !== callToastId),
         {
-          id: Date.now() + Math.random(),
+          id: callToastId,
           message: `📢 ${payload?.playerName ? payload.playerName + ": " : ""}${label}`,
           type: payload?.callNumber === 3 ? "error" : "info",
         },
       ]);
+
+      // Auto dismiss after 3.5 seconds
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== callToastId));
+      }, 3500);
     };
 
     const handlePlayerWithdrawn = () => {
       setActiveAuctionCall(null);
+      setToasts((prev) => prev.filter((t) => t.id !== "auction_call_toast"));
       setCurrentPlayer(null);
       setRecentlySold(null);
       setRecentlyUnsold(null);
@@ -275,7 +286,11 @@ function App() {
           <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-3 items-center w-full max-w-md px-4 pointer-events-none">
             {toasts.map((t) => (
               <div key={t.id} className="pointer-events-auto">
-                <Toast message={t.message} type={t.type} />
+                <Toast
+                  message={t.message}
+                  type={t.type}
+                  onClose={() => setToasts((prev) => prev.filter((item) => item.id !== t.id))}
+                />
               </div>
             ))}
           </div>
