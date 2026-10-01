@@ -29,7 +29,7 @@ const playerSchema = new mongoose.Schema({
     type: Number,
     required: [
       function () {
-        return !this.isCaptain;
+        return Boolean(this && this.isCaptain === false);
       },
       'A non-captain player must have a base price',
     ],
