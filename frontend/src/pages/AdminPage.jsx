@@ -129,16 +129,7 @@ export default function AdminPage() {
     };
     fetchStatus();
     
-  // Captain updated handler
-  const handleCaptainAssigned = () => {
-    fetchInitialData();
-  };
 
-  // Start auction from Random Draw modal
-  const handleStartFromModal = (playerId) => {
-    setIsRandomDrawModalOpen(false);
-    handleStartAuction(playerId);
-  };
 
   return () => {
       ignore = true;
@@ -791,6 +782,17 @@ export default function AdminPage() {
     if (others.length === 0) return;
     const randomIndex = Math.floor(Math.random() * others.length);
     setDrawnPlayer(others[randomIndex]);
+  };
+
+  // Captain updated handler
+  const handleCaptainAssigned = () => {
+    fetchInitialData();
+  };
+
+  // Start auction from Random Draw modal
+  const handleStartFromModal = (playerId) => {
+    setIsRandomDrawModalOpen(false);
+    handleStartAuction(playerId);
   };
 
   return (
