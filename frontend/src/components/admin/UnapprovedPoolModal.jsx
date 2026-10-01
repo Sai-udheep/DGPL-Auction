@@ -6,6 +6,7 @@ import {
   Search,
   AlertTriangle,
   UserCheck,
+  ArrowUpDown,
   Sparkles,
   RefreshCw,
   ShieldCheck,
@@ -33,6 +34,7 @@ export default function UnapprovedPoolModal({
   const [bulkLoading, setBulkLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [yearFilter, setYearFilter] = useState("all");
+  const [sortOrder, setSortOrder] = useState("asc"); // "asc" | "desc"
   const [feedbackMsg, setFeedbackMsg] = useState(null);
   const [editingPlayerId, setEditingPlayerId] = useState(null);
   const [editFormData, setEditFormData] = useState({});
@@ -41,7 +43,7 @@ export default function UnapprovedPoolModal({
     setLoading(true);
     setFeedbackMsg(null);
     try {
-      const res = await fetch(`${API_URL}/api/v1/players?isApproved=false&limit=500`, {
+      const res = await fetch(`${API_URL}/api/v1/players?isApproved=false&sort=name&limit=500`, {
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
@@ -207,15 +209,20 @@ export default function UnapprovedPoolModal({
   };
 
   const filteredPlayers = useMemo(() => {
-    return players.filter((p) => {
-      const matchesSearch =
-        search === "" ||
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        (p.category && p.category.toLowerCase().includes(search.toLowerCase()));
-      const matchesYear = yearFilter === "all" || String(p.year) === String(yearFilter);
-      return matchesSearch && matchesYear;
-    });
-  }, [players, search, yearFilter]);
+    return [...players]
+      .filter((p) => {
+        const matchesSearch =
+          search === "" ||
+          p.name.toLowerCase().includes(search.toLowerCase()) ||
+          (p.category && p.category.toLowerCase().includes(search.toLowerCase()));
+        const matchesYear = yearFilter === "all" || String(p.year) === String(yearFilter);
+        return matchesSearch && matchesYear;
+      })
+      .sort((a, b) => {
+        const comp = (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" });
+        return sortOrder === "asc" ? comp : -comp;
+      });
+  }, [players, search, yearFilter, sortOrder]);
 
   if (!isOpen) return null;
 
@@ -296,6 +303,16 @@ export default function UnapprovedPoolModal({
               <option value="3" className="bg-[#0c1017]">Year 3</option>
               <option value="4" className="bg-[#0c1017]">Year 4</option>
             </select>
+
+            <button
+              onClick={() => setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))}
+              className="bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-white/80 hover:text-white flex items-center gap-1.5 cursor-pointer transition shrink-0"
+              type="button"
+              title="Click to toggle Name A-Z / Z-A"
+            >
+              <ArrowUpDown className="w-3.5 h-3.5 text-amber-300" />
+              <span>{sortOrder === "asc" ? "Name (A-Z)" : "Name (Z-A)"}</span>
+            </button>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
