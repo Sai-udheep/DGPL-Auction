@@ -37,35 +37,35 @@ const CurrentPlayer = ({ player: livePlayer, isAuctionActive = false, teams = []
 
   if (loading) return <CurrentPlayerSkeleton />;
 
-  // 1. If auction is not currently active / paused
+  // 1. If auction is not currently active / paused (RED theme as requested)
   if (!isAuctionActive && !player) {
     return (
-      <div className="glass-card p-10 sm:p-12 text-center max-w-lg w-full flex flex-col items-center justify-center space-y-5 shadow-2xl border-white/10">
+      <div className="glass-card p-10 sm:p-12 text-center max-w-lg w-full flex flex-col items-center justify-center space-y-5 shadow-2xl border-rose-500/30 bg-[#0e121c]/95 shadow-[0_0_40px_rgba(244,63,94,0.12)]">
         <div className="relative">
-          <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-amber-500/20 via-orange-500/15 to-transparent border border-amber-400/30 flex items-center justify-center text-amber-400 shadow-inner">
+          <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-rose-500/25 via-red-500/15 to-transparent border border-rose-400/40 flex items-center justify-center text-rose-400 shadow-inner">
             <Radio className="w-8 h-8" />
           </div>
-          <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-400/60 animate-ping" />
+          <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-rose-400/80 animate-ping" />
         </div>
 
         <div>
-          <span className="text-[10px] font-extrabold uppercase tracking-widest px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 inline-block mb-2 shadow-sm">
-            {tournamentTitle} • {tournamentMode.toUpperCase()}
+          <span className="text-[10px] font-extrabold uppercase tracking-widest px-3 py-1 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-300 inline-block mb-2 shadow-sm">
+            {tournamentTitle} • {tournamentMode.toUpperCase()} • PAUSED / STANDBY
           </span>
           <h3 className="text-xl sm:text-2xl font-black text-white tracking-wide font-brand">
-            {tournamentMode === "Mock Auction" ? "Mock Bidding Arena Standing By" : "Tournament Arena Standing By"}
+            {tournamentMode === "Mock Auction" ? "Mock Auction on Standby" : "Auction Not in Session"}
           </h3>
           <p className="text-xs text-white/60 mt-2 leading-relaxed max-w-sm mx-auto font-medium">
             {tournamentMode === "Mock Auction"
-              ? "Practice bidding session is standing by. Organizers will bring the next test player to the stage shortly."
-              : "The live bidding floor is currently standing by. Organizers will bring the next player to the stage shortly."}
+              ? "Mock auction session is currently paused. Organizers will resume the practice round shortly."
+              : "Live bidding is currently on hold. Organizers will open the session before bringing players to the stage."}
           </p>
         </div>
 
         <div className="pt-2 w-full max-w-xs">
-          <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/[0.06] text-[11px] text-white/50 flex items-center justify-center gap-2">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Stay on this page for live automatic updates</span>
+          <div className="p-3 rounded-2xl bg-rose-500/5 border border-rose-500/20 text-[11px] text-rose-300/80 flex items-center justify-center gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-rose-400" />
+            <span>Standing by — session will turn blue when active</span>
           </div>
         </div>
       </div>

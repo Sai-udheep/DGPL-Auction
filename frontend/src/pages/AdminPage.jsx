@@ -45,7 +45,7 @@ export default function AdminPage() {
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [tournamentTitle, setTournamentTitle] = useState("DGPL Season 11");
-  const [tournamentMode, setTournamentMode] = useState("Official Auction");
+  const [tournamentMode, setTournamentMode] = useState(() => (typeof localStorage !== "undefined" && localStorage.getItem("dgpl_tournament_mode")) || "Official Auction");
 
   // Bulk Player & CSV Modals
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -440,6 +440,12 @@ export default function AdminPage() {
   };
 
   const handleStartAuction = async (playerId) => {
+    if (!isAuctionActive) {
+      const msg = "Please start the auction session first (click 'Start Session' above) before bringing a player to the stage.";
+      setError(msg);
+      setAuctionMessage(msg);
+      return;
+    }
     setActionLoadingId(playerId);
     setAuctionMessage(null);
     try {
@@ -592,6 +598,52 @@ export default function AdminPage() {
     } finally {
       setActionLoadingId(null);
     }
+  };
+
+  // Revert accidentally started player back to pool without penalty
+  const handleCancelPlayer = async (playerId) => {
+    setActionLoadingId(playerId || "cancel");
+    setAuctionMessage(null);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/auction/cancel-player`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ playerId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Failed to withdraw player");
+      }
+      setAuctionMessage("Player was safely returned to the available pool");
+      setCurrentAuctionPlayerId(null);
+      fetchPlayers();
+    } catch (err) {
+      setError(err.message || "Failed to withdraw player");
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  // Toggle tournament mode (Official Auction vs Mock Auction)
+  const handleUpdateTournamentMode = async (mode) => {
+    setTournamentMode(mode);
+    try {
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("dgpl_tournament_mode", mode);
+      }
+      await fetch(`${API_URL}/api/v1/auction/tournament-info`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ tournamentMode: mode }),
+      });
+      setAuctionMessage(`Tournament mode switched to ${mode}`);
+    } catch (_) {}
   };
 
   // Derive player pools for the selected year
