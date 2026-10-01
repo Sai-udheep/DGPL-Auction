@@ -1,9 +1,20 @@
 const Player = require('./../models/playerModel');
 const Team = require('./../models/teamModel');
+const AppConfig = require('./../models/appConfigModel');
 const catchAsync = require('./../utils/catchAsync');
 const AppError = require('./../utils/appError');
 const APIFeatures = require('./../utils/apiFeatures');
 const handlerFactory = require('./handlerFactory');
+
+// Helper to auto-calculate base price from academic year
+const getAutoBasePrice = (year) => {
+  const y = parseInt(year, 10);
+  if (y === 1) return 0.5;
+  if (y === 2) return 1.0;
+  if (y === 3) return 1.5;
+  if (y === 4) return 2.0;
+  return 0.5;
+};
 
 // CREATE A PLAYER
 exports.createPlayer = handlerFactory.createOne(Player);
@@ -169,14 +180,12 @@ exports.rejectAllUnapprovedPlayers = catchAsync(async (req, res, next) => {
   });
 });
 
-// DYNAMIC SYNC FROM GOOGLE FORM / GOOGLE SHEETS
-exports.syncGoogleSheet = catchAsync(async (req, res, next) => {
-  let { sheetUrl, asUnapproved = true } = req.body;
+// CORE SHEET SYNC FUNCTION (Shared by manual sync & continuous auto-sync worker)
+const syncSheetCore = async (sheetUrl, asUnapproved = true, io = null) => {
   if (!sheetUrl || typeof sheetUrl !== 'string') {
-    return next(new AppError('Please provide a valid Google Sheet or CSV URL', 400));
+    throw new Error('Please provide a valid Google Sheet or CSV URL');
   }
 
-  // Convert standard Google Sheet URL to CSV export URL if needed
   let csvUrl = sheetUrl.trim();
   const sheetMatch = csvUrl.match(/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   if (sheetMatch && !csvUrl.includes('export?format=csv') && !csvUrl.includes('/pub?')) {
@@ -186,7 +195,6 @@ exports.syncGoogleSheet = catchAsync(async (req, res, next) => {
     csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${gidParam}`;
   }
 
-  // Fetch the CSV data using node's fetch
   let csvText = '';
   try {
     const resp = await fetch(csvUrl, {
@@ -199,148 +207,285 @@ exports.syncGoogleSheet = catchAsync(async (req, res, next) => {
     }
     csvText = await resp.text();
   } catch (err) {
-    return next(
-      new AppError(
-        'Failed to fetch from Google Sheet. Make sure the sheet sharing is set to "Anyone with the link can view". Details: ' +
-          err.message,
-        400
-      )
-    );
+    throw new Error('Failed to fetch from Google Sheet: ' + err.message);
   }
 
-  // Auto-pricing rule helper
-  const getAutoBasePrice = (year) => {
-    const y = parseInt(year, 10);
-    if (y === 1) return 0.5;
-    if (y === 2) return 1.0;
-    if (y === 3) return 1.5;
-    if (y === 4) return 2.0;
-    return 0.5;
-  };
-
-  const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  const lines = csvText.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
   if (lines.length < 2) {
-    return next(new AppError('The Google Sheet appears empty or only has headers.', 400));
+    return { count: 0, skipped: 0, players: [] };
   }
 
-  const headers = lines[0].split(',').map((h) => h.trim().toLowerCase().replace(/['"]/g, ''));
-  const nameIdx = headers.findIndex((h) => (h.includes('name') || h.includes('player')) && !h.includes('timestamp'));
-  const catIdx = headers.findIndex((h) => h.includes('role') || h.includes('category') || h.includes('skill') || h.includes('playing'));
-  const yearIdx = headers.findIndex((h) => h.includes('year') || h.includes('batch') || h.includes('academic') || h.includes('participation'));
-  const priceIdx = headers.findIndex((h) => h.includes('price') || h.includes('base') || h.includes('points'));
-  const imgIdx = headers.findIndex((h) => h.includes('photo') || h.includes('image') || h.includes('picture') || h.includes('link') || h.includes('url') || h.includes('upload'));
-
-  if (nameIdx === -1) {
-    return next(new AppError('Could not find a "Name" or "Full Name" column in the sheet headers.', 400));
+  let isVerticalHeaders = false;
+  let numVerticalHeaders = 0;
+  for (let i = 0; i < Math.min(15, lines.length); i++) {
+    const l = lines[i];
+    if (/\d{1,2}\/\d{1,2}\/\d{2,4}/.test(l) || (l.includes('@') && !l.toLowerCase().includes('address'))) {
+      numVerticalHeaders = i;
+      isVerticalHeaders = true;
+      break;
+    }
   }
 
   const newPlayersToInsert = [];
   let skippedDuplicates = 0;
 
-  for (let i = 1; i < lines.length; i++) {
-    const cells = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || lines[i].split(',');
-    const cleanCells = cells.map((c) => c.trim().replace(/^"|"$/g, ''));
+  if (isVerticalHeaders && numVerticalHeaders >= 3) {
+    const headerNames = lines.slice(0, numVerticalHeaders).map((h) => h.toLowerCase());
+    const dataLines = lines.slice(numVerticalHeaders);
 
-    const name = cleanCells[nameIdx]?.trim();
-    if (!name) continue;
+    for (let i = 0; i < dataLines.length; i += numVerticalHeaders) {
+      const chunk = dataLines.slice(i, i + numVerticalHeaders);
+      if (chunk.length < 3) continue;
 
-    // Check if player with same name already exists to prevent duplicate entries
-    const existing = await Player.findOne({ name: new RegExp(`^${name}$`, 'i') });
-    if (existing) {
-      skippedDuplicates++;
-      continue;
-    }
+      const entry = {};
+      for (let j = 0; j < Math.min(headerNames.length, chunk.length); j++) {
+        entry[headerNames[j]] = chunk[j];
+      }
 
-    let rawCat = catIdx >= 0 && cleanCells[catIdx] ? cleanCells[catIdx] : 'All-Rounder';
-    const catLower = rawCat.toLowerCase();
-    let category = 'All-Rounder';
-    if (catLower.includes('bat')) category = 'Batsman';
-    else if (catLower.includes('bowl')) category = 'Bowler';
-    else if (catLower.includes('keep') || catLower.includes('wk') || catLower.includes('wicket')) category = 'Wicket-Keeper';
+      const nameKey = Object.keys(entry).find(
+        (k) => (k.includes('name') || k.includes('player')) && !k.includes('timestamp')
+      );
+      const name = nameKey ? entry[nameKey].trim() : '';
+      if (!name) continue;
 
-    let year = 1;
-    if (yearIdx >= 0 && cleanCells[yearIdx]) {
-      const yMatch = cleanCells[yearIdx].match(/\d+/);
-      if (yMatch) year = parseInt(yMatch[0], 10);
-    }
+      const existing = await Player.findOne({ name: new RegExp(`^${name}$`, 'i') });
+      if (existing) {
+        skippedDuplicates++;
+        continue;
+      }
 
-    let basePrice = getAutoBasePrice(year);
-    if (priceIdx >= 0 && cleanCells[priceIdx] && !isNaN(parseFloat(cleanCells[priceIdx]))) {
-      basePrice = parseFloat(cleanCells[priceIdx]);
-    }
+      const roleKey = Object.keys(entry).find((k) =>
+        k.includes('role') || k.includes('category') || k.includes('skill') || k.includes('playing')
+      );
+      let rawRole = (roleKey ? entry[roleKey] : 'All-Rounder').toLowerCase();
+      let category = 'All-Rounder';
+      if (rawRole.includes('bat')) category = 'Batsman';
+      else if (rawRole.includes('bowl')) category = 'Bowler';
+      else if (rawRole.includes('keep') || rawRole.includes('wk') || rawRole.includes('wicket')) category = 'Wicket-Keeper';
 
-    let image = '';
-    if (imgIdx >= 0 && cleanCells[imgIdx]) {
-      let rawImg = cleanCells[imgIdx].trim();
-      const driveMatch = rawImg.match(/\/d\/([a-zA-Z0-9_-]+)/) || rawImg.match(/id=([a-zA-Z0-9_-]+)/);
+      const yearKey = Object.keys(entry).find((k) =>
+        k.includes('year') || k.includes('academic') || k.includes('batch') || k.includes('participation')
+      );
+      let year = 1;
+      if (yearKey && entry[yearKey]) {
+        const yMatch = entry[yearKey].match(/\d+/);
+        if (yMatch) year = parseInt(yMatch[0], 10);
+      }
+      const basePrice = getAutoBasePrice(year);
+
+      const photoKey = Object.keys(entry).find((k) =>
+        k.includes('photo') || k.includes('image') || k.includes('picture') || k.includes('upload') || k.includes('link') || k.includes('url')
+      );
+      let image = photoKey ? entry[photoKey] : '';
+      const urlMatch = image.match(/https?:\/\/[^\s\)\]]+/);
+      if (urlMatch) image = urlMatch[0];
+      const driveMatch = image.match(/\/d\/([a-zA-Z0-9_-]+)/) || image.match(/id=([a-zA-Z0-9_-]+)/);
       if (driveMatch) {
         image = `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
-      } else if (rawImg.startsWith('http')) {
-        image = rawImg;
+      }
+      if (!image) {
+        image = `https://via.placeholder.com/200x250?text=${encodeURIComponent(name)}`;
+      }
+
+      newPlayersToInsert.push({
+        name,
+        category,
+        year,
+        basePrice,
+        image,
+        status: 'unsold',
+        isCaptain: false,
+        isApproved: asUnapproved ? false : true,
+        bidHistory: [],
+      });
+    }
+  } else {
+    const delimiter = lines[0].includes('\t') ? '\t' : ',';
+    const headers = lines[0].split(delimiter).map((h) => h.trim().toLowerCase().replace(/['"]/g, ''));
+    const nameIdx = headers.findIndex((h) => (h.includes('name') || h.includes('player')) && !h.includes('timestamp'));
+    const catIdx = headers.findIndex((h) => h.includes('role') || h.includes('category') || h.includes('skill') || h.includes('playing'));
+    const yearIdx = headers.findIndex((h) => h.includes('year') || h.includes('batch') || h.includes('academic') || h.includes('participation'));
+    const priceIdx = headers.findIndex((h) => h.includes('price') || h.includes('base') || h.includes('points'));
+    const imgIdx = headers.findIndex((h) => h.includes('photo') || h.includes('image') || h.includes('picture') || h.includes('link') || h.includes('url') || h.includes('upload'));
+
+    if (nameIdx !== -1) {
+      for (let i = 1; i < lines.length; i++) {
+        const cells = delimiter === '\t'
+          ? lines[i].split('\t').map((c) => c.trim().replace(/^"|"$/g, ''))
+          : (lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || lines[i].split(',')).map((c) => c.trim().replace(/^"|"$/g, ''));
+
+        const name = cells[nameIdx]?.trim();
+        if (!name) continue;
+
+        const existing = await Player.findOne({ name: new RegExp(`^${name}$`, 'i') });
+        if (existing) {
+          skippedDuplicates++;
+          continue;
+        }
+
+        let rawCat = catIdx >= 0 && cells[catIdx] ? cells[catIdx] : 'All-Rounder';
+        const catLower = rawCat.toLowerCase();
+        let category = 'All-Rounder';
+        if (catLower.includes('bat')) category = 'Batsman';
+        else if (catLower.includes('bowl')) category = 'Bowler';
+        else if (catLower.includes('keep') || catLower.includes('wk') || catLower.includes('wicket')) category = 'Wicket-Keeper';
+
+        let year = 1;
+        if (yearIdx >= 0 && cells[yearIdx]) {
+          const yMatch = cells[yearIdx].match(/\d+/);
+          if (yMatch) year = parseInt(yMatch[0], 10);
+        }
+
+        let basePrice = getAutoBasePrice(year);
+        if (priceIdx >= 0 && cells[priceIdx] && !isNaN(parseFloat(cells[priceIdx]))) {
+          basePrice = parseFloat(cells[priceIdx]);
+        }
+
+        let image = '';
+        if (imgIdx >= 0 && cells[imgIdx]) {
+          let rawImg = cells[imgIdx].trim();
+          const urlMatch = rawImg.match(/https?:\/\/[^\s\)\]]+/);
+          if (urlMatch) rawImg = urlMatch[0];
+          const driveMatch = rawImg.match(/\/d\/([a-zA-Z0-9_-]+)/) || rawImg.match(/id=([a-zA-Z0-9_-]+)/);
+          if (driveMatch) {
+            image = `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
+          } else if (rawImg.startsWith('http')) {
+            image = rawImg;
+          }
+        }
+        if (!image) {
+          image = `https://via.placeholder.com/200x250?text=${encodeURIComponent(name)}`;
+        }
+
+        newPlayersToInsert.push({
+          name,
+          category,
+          year,
+          basePrice,
+          image,
+          status: 'unsold',
+          isCaptain: false,
+          isApproved: asUnapproved ? false : true,
+          bidHistory: [],
+        });
       }
     }
-    if (!image) {
-      image = `https://via.placeholder.com/200x250?text=${encodeURIComponent(name)}`;
+  }
+
+  let inserted = [];
+  if (newPlayersToInsert.length > 0) {
+    inserted = await Player.insertMany(newPlayersToInsert);
+    if (io) {
+      io.emit('server:players_updated', {
+        action: 'imported',
+        count: inserted.length,
+        asUnapproved: Boolean(asUnapproved),
+      });
+      io.emit('server:new_submissions_detected', {
+        count: inserted.length,
+        players: inserted.map((p) => ({ name: p.name, category: p.category, year: p.year })),
+      });
     }
-
-    newPlayersToInsert.push({
-      name,
-      category,
-      year,
-      basePrice,
-      image,
-      status: 'unsold',
-      isCaptain: false,
-      isApproved: asUnapproved ? false : true,
-      bidHistory: [],
-    });
   }
 
-  if (newPlayersToInsert.length === 0) {
-    return res.status(200).json({
-      status: 'success',
-      message: skippedDuplicates > 0 
-        ? `All ${skippedDuplicates} entries in the sheet already exist in the database.`
-        : 'No new player rows found in the sheet.',
-      count: 0,
-      skippedDuplicates,
-      data: { players: [] },
-    });
-  }
-
-  const inserted = await Player.insertMany(newPlayersToInsert);
-
-  if (req.io) {
-    req.io.emit('server:players_updated', {
-      action: 'imported',
-      count: inserted.length,
-      asUnapproved: Boolean(asUnapproved),
-    });
-  }
-
-  res.status(201).json({
-    status: 'success',
-    message: `Successfully loaded ${inserted.length} players ${asUnapproved ? 'into Unapproved Pool for review' : 'directly to tournament pool'}${skippedDuplicates > 0 ? ` (${skippedDuplicates} duplicates skipped)` : ''}.`,
+  return {
     count: inserted.length,
-    skippedDuplicates,
-    data: { players: inserted },
+    skipped: skippedDuplicates,
+    players: inserted,
+  };
+};
+
+exports.syncSheetCore = syncSheetCore;
+
+// SYNC PLAYERS DYNAMICALLY FROM GOOGLE FORM / GOOGLE SHEETS
+exports.syncGoogleSheet = catchAsync(async (req, res, next) => {
+  const { sheetUrl, asUnapproved = true } = req.body;
+  if (!sheetUrl) {
+    return next(new AppError('Please provide a valid Google Sheet or CSV URL', 400));
+  }
+
+  try {
+    const result = await syncSheetCore(sheetUrl, asUnapproved, req.io);
+
+    // Save as last synced URL in AppConfig
+    try {
+      await AppConfig.findOneAndUpdate(
+        {},
+        { $set: { googleSheetSyncUrl: sheetUrl.trim(), lastSyncedAt: new Date() } },
+        { upsert: true }
+      );
+    } catch (_) {}
+
+    res.status(200).json({
+      status: 'success',
+      message: `Successfully processed Google Form responses: ${result.count} new players imported ${asUnapproved ? 'to Unapproved Pool' : 'to tournament pool'}${result.skipped > 0 ? ` (${result.skipped} duplicates skipped)` : ''}.`,
+      count: result.count,
+      skippedDuplicates: result.skipped,
+      data: { players: result.players },
+    });
+  } catch (err) {
+    return next(new AppError(err.message, 400));
+  }
+});
+
+// GET AUTO-SYNC STATUS
+exports.getAutoSyncStatus = catchAsync(async (req, res, next) => {
+  const cfg = (await AppConfig.findOne()) || {};
+  res.status(200).json({
+    status: 'success',
+    data: {
+      isAutoSyncEnabled: Boolean(cfg.isAutoSyncEnabled),
+      googleSheetSyncUrl: cfg.googleSheetSyncUrl || '',
+      lastSyncedAt: cfg.lastSyncedAt || null,
+    },
   });
 });
 
-// UPLOAD PLAYERS (CSV or JSON with automatic year-based pricing & approval support)
+// CONFIGURE AUTO-SYNC
+exports.configureAutoSync = catchAsync(async (req, res, next) => {
+  const { sheetUrl, enabled } = req.body;
+
+  let cfg = await AppConfig.findOne();
+  if (!cfg) {
+    cfg = new AppConfig();
+  }
+
+  cfg.isAutoSyncEnabled = Boolean(enabled);
+  if (sheetUrl !== undefined) {
+    cfg.googleSheetSyncUrl = String(sheetUrl).trim();
+  }
+  await cfg.save();
+
+  let syncResult = null;
+  if (cfg.isAutoSyncEnabled && cfg.googleSheetSyncUrl) {
+    try {
+      syncResult = await syncSheetCore(cfg.googleSheetSyncUrl, true, req.io);
+      cfg.lastSyncedAt = new Date();
+      await cfg.save();
+    } catch (err) {
+      return next(new AppError(err.message, 400));
+    }
+  }
+
+  res.status(200).json({
+    status: 'success',
+    message: cfg.isAutoSyncEnabled
+      ? `Auto-sync is ACTIVE! Real-time check started: ${syncResult?.count || 0} new players found.`
+      : 'Auto-sync turned OFF.',
+    data: {
+      isAutoSyncEnabled: cfg.isAutoSyncEnabled,
+      googleSheetSyncUrl: cfg.googleSheetSyncUrl,
+      lastSyncedAt: cfg.lastSyncedAt,
+      syncResult,
+    },
+  });
+});
+
+// UPLOAD PLAYERS (CSV, TSV, or Vertical Google Form with automatic year-based pricing)
 exports.uploadPlayers = catchAsync(async (req, res, next) => {
   let rawData = req.body.players || req.body.data;
   let fileText = req.file?.buffer ? req.file.buffer.toString('utf8') : req.body.csvText;
   const asUnapproved = req.body.asUnapproved === true || req.body.asUnapproved === 'true';
-
-  const getAutoBasePrice = (year) => {
-    const y = parseInt(year, 10);
-    if (y === 1) return 0.5;
-    if (y === 2) return 1.0;
-    if (y === 3) return 1.5;
-    if (y === 4) return 2.0;
-    return 0.5;
-  };
 
   const playersToInsert = [];
 
@@ -397,7 +542,6 @@ exports.uploadPlayers = catchAsync(async (req, res, next) => {
         return next(new AppError('Data must include header row and at least 1 player.', 400));
       }
 
-      // Check for vertical Google Forms copy-paste (1 field per line)
       let isVerticalHeaders = false;
       let numVerticalHeaders = 0;
       for (let i = 0; i < Math.min(15, lines.length); i++) {
@@ -474,68 +618,71 @@ exports.uploadPlayers = catchAsync(async (req, res, next) => {
           });
         }
       } else {
+        const delimiter = lines[0].includes('\t') ? '\t' : ',';
+        const headers = lines[0].split(delimiter).map((h) => h.trim().toLowerCase().replace(/['"]/g, ''));
+        const nameIdx = headers.findIndex((h) => (h.includes('name') || h.includes('player')) && !h.includes('timestamp'));
+        const catIdx = headers.findIndex((h) => h.includes('role') || h.includes('category') || h.includes('skill') || h.includes('playing'));
+        const yearIdx = headers.findIndex((h) => h.includes('year') || h.includes('batch') || h.includes('academic') || h.includes('participation'));
+        const priceIdx = headers.findIndex((h) => h.includes('price') || h.includes('base') || h.includes('points'));
+        const imgIdx = headers.findIndex((h) => h.includes('photo') || h.includes('image') || h.includes('picture') || h.includes('link') || h.includes('url') || h.includes('upload'));
 
-      const headers = lines[0].split(',').map((h) => h.trim().toLowerCase().replace(/['"]/g, ''));
-      const nameIdx = headers.findIndex((h) => (h.includes('name') || h.includes('player')) && !h.includes('timestamp'));
-      const catIdx = headers.findIndex((h) => h.includes('role') || h.includes('category') || h.includes('skill') || h.includes('playing'));
-      const yearIdx = headers.findIndex((h) => h.includes('year') || h.includes('batch') || h.includes('academic') || h.includes('participation'));
-      const priceIdx = headers.findIndex((h) => h.includes('price') || h.includes('base') || h.includes('points'));
-      const imgIdx = headers.findIndex((h) => h.includes('photo') || h.includes('image') || h.includes('picture') || h.includes('link') || h.includes('url') || h.includes('upload'));
-
-      if (nameIdx === -1) {
-        return next(new AppError('Missing required "Name" column in CSV.', 400));
-      }
-
-      for (let i = 1; i < lines.length; i++) {
-        const cells = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || lines[i].split(',');
-        const cleanCells = cells.map((c) => c.trim().replace(/^"|"$/g, ''));
-
-        const name = cleanCells[nameIdx]?.trim();
-        if (!name) continue;
-
-        let category = catIdx >= 0 ? cleanCells[catIdx] : 'All-Rounder';
-        const catLower = category.toLowerCase();
-        if (catLower.includes('bat')) category = 'Batsman';
-        else if (catLower.includes('bowl')) category = 'Bowler';
-        else if (catLower.includes('keep') || catLower.includes('wk')) category = 'Wicket-Keeper';
-        else category = 'All-Rounder';
-
-        const yearVal = yearIdx >= 0 ? parseInt(cleanCells[yearIdx], 10) : 1;
-        const year = isNaN(yearVal) ? 1 : yearVal;
-
-        let basePrice;
-        if (priceIdx >= 0 && cleanCells[priceIdx] && !isNaN(parseFloat(cleanCells[priceIdx]))) {
-          basePrice = parseFloat(cleanCells[priceIdx]);
-        } else {
-          basePrice = getAutoBasePrice(year);
+        if (nameIdx === -1) {
+          return next(new AppError('Missing required "Name" column in CSV.', 400));
         }
 
-        let image = '';
-        if (imgIdx >= 0 && cleanCells[imgIdx]) {
-          let rawImg = cleanCells[imgIdx].trim();
-          const driveMatch = rawImg.match(/\/d\/([a-zA-Z0-9_-]+)/) || rawImg.match(/id=([a-zA-Z0-9_-]+)/);
-          if (driveMatch) {
-            image = `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
-          } else if (rawImg.startsWith('http')) {
-            image = rawImg;
+        for (let i = 1; i < lines.length; i++) {
+          const cells = delimiter === '\t'
+            ? lines[i].split('\t').map((c) => c.trim().replace(/^"|"$/g, ''))
+            : (lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || lines[i].split(',')).map((c) => c.trim().replace(/^"|"$/g, ''));
+
+          const name = cells[nameIdx]?.trim();
+          if (!name) continue;
+
+          let category = catIdx >= 0 ? cells[catIdx] : 'All-Rounder';
+          const catLower = category.toLowerCase();
+          if (catLower.includes('bat')) category = 'Batsman';
+          else if (catLower.includes('bowl')) category = 'Bowler';
+          else if (catLower.includes('keep') || catLower.includes('wk')) category = 'Wicket-Keeper';
+          else category = 'All-Rounder';
+
+          const yearVal = yearIdx >= 0 ? parseInt(cells[yearIdx], 10) : 1;
+          const year = isNaN(yearVal) ? 1 : yearVal;
+
+          let basePrice;
+          if (priceIdx >= 0 && cells[priceIdx] && !isNaN(parseFloat(cells[priceIdx]))) {
+            basePrice = parseFloat(cells[priceIdx]);
+          } else {
+            basePrice = getAutoBasePrice(year);
           }
-        }
-        if (!image) {
-          image = `https://via.placeholder.com/200x250?text=${encodeURIComponent(name)}`;
-        }
 
-        playersToInsert.push({
-          name,
-          category,
-          year,
-          basePrice,
-          image,
-          status: 'unsold',
-          isCaptain: false,
-          isApproved: asUnapproved ? false : true,
-          bidHistory: [],
-        });
-      }
+          let image = '';
+          if (imgIdx >= 0 && cells[imgIdx]) {
+            let rawImg = cells[imgIdx].trim();
+            const urlMatch = rawImg.match(/https?:\/\/[^\s\)\]]+/);
+            if (urlMatch) rawImg = urlMatch[0];
+            const driveMatch = rawImg.match(/\/d\/([a-zA-Z0-9_-]+)/) || rawImg.match(/id=([a-zA-Z0-9_-]+)/);
+            if (driveMatch) {
+              image = `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
+            } else if (rawImg.startsWith('http')) {
+              image = rawImg;
+            }
+          }
+          if (!image) {
+            image = `https://via.placeholder.com/200x250?text=${encodeURIComponent(name)}`;
+          }
+
+          playersToInsert.push({
+            name,
+            category,
+            year,
+            basePrice,
+            image,
+            status: 'unsold',
+            isCaptain: false,
+            isApproved: asUnapproved ? false : true,
+            bidHistory: [],
+          });
+        }
       }
     }
   }

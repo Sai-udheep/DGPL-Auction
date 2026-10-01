@@ -247,6 +247,15 @@ export default function AdminPage() {
     };
     socket.on("server:players_updated", handlePlayersUpdated);
 
+    const handleNewSubmissions = (payload) => {
+      fetchPlayers();
+      fetchUnapprovedCount();
+      if (payload && payload.count > 0) {
+        setAuctionMessage(`⚡ Real-Time Auto-Sync: ${payload.count} new participant(s) detected from Google Form! Added to Unapproved Pool.`);
+      }
+    };
+    socket.on("server:new_submissions_detected", handleNewSubmissions);
+
     return () => {
       socket.off("server:auction_status_changed", handleStatusChanged);
       socket.off("server:auction_reset", handleReset);
@@ -257,6 +266,7 @@ export default function AdminPage() {
       socket.off("server:player_unsold", handlePlayerUnsold);
       socket.off("player_unsold", handlePlayerUnsold);
       socket.off("server:players_updated", handlePlayersUpdated);
+      socket.off("server:new_submissions_detected", handleNewSubmissions);
     };
   }, [socket, isConnected, fetchPlayers]);
 

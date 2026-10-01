@@ -35,6 +35,32 @@ export default function CsvUploadModal({ isOpen, onClose, token: propToken, onUp
   const [successMsg, setSuccessMsg] = useState(null);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [autoSyncActive, setAutoSyncActive] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/v1/players/auto-sync-status`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.data) {
+            setAutoSyncActive(Boolean(json.data.isAutoSyncEnabled));
+            if (json.data.googleSheetSyncUrl) {
+              setGoogleSheetUrl(json.data.googleSheetSyncUrl);
+            }
+            if (json.data.lastSyncedAt) {
+              setLastSyncedAt(json.data.lastSyncedAt);
+            }
+          }
+        }
+      } catch (_) {}
+    };
+    fetchStatus();
+  }, [isOpen, token]);
 
   if (!isOpen) return null;
 
@@ -80,7 +106,45 @@ Rishabh Pant,Wicket-Keeper,2,1.0,https://images.unsplash.com/photo-1492562080023
     return "All-Rounder";
   };
 
-  // Google Sheet / Google Forms Dynamic Sync Handler
+  // Configure continuous 24/7 background auto-sync
+  const handleToggleAutoSync = async (enabled) => {
+    if (enabled && (!googleSheetUrl || !googleSheetUrl.trim())) {
+      setError("Please paste a valid Google Sheet or CSV URL to enable auto-sync.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSuccessMsg(null);
+
+    try {
+      const res = await fetch(`${API_URL}/api/v1/players/configure-auto-sync`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          sheetUrl: googleSheetUrl.trim(),
+          enabled,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || "Failed to configure auto-sync");
+
+      setAutoSyncActive(Boolean(data.data?.isAutoSyncEnabled));
+      if (data.data?.lastSyncedAt) setLastSyncedAt(data.data.lastSyncedAt);
+      setSuccessMsg(data.message || (enabled ? "Real-time auto-sync activated!" : "Auto-sync disabled."));
+      if (onUploadSuccess) onUploadSuccess();
+    } catch (err) {
+      setError(err.message || "Error configuring auto-sync");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Google Sheet / Google Forms Dynamic Sync Handler (Manual 1-time)
   const handleSyncGoogleSheet = async () => {
     if (!googleSheetUrl || !googleSheetUrl.trim()) {
       setError("Please paste a valid Google Sheet or CSV URL.");
@@ -565,15 +629,65 @@ Rishabh Pant,Wicket-Keeper,2,1.0,https://images.unsplash.com/photo-1492562080023
                 </div>
               </div>
 
-              <div className="flex justify-end">
+              {/* Real-time Background Auto-Sync Banner */}
+              <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2.5 h-2.5 rounded-full ${autoSyncActive ? "bg-emerald-400 animate-ping" : "bg-white/20"}`} />
+                    <span className="text-xs font-bold text-white">
+                      Continuous Auto-Sync (Every 45s)
+                    </span>
+                    <span className={`px-2 py-0.2 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                      autoSyncActive ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" : "bg-white/10 text-white/40"
+                    }`}>
+                      {autoSyncActive ? "ACTIVE" : "OFF"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-white/50">
+                    {autoSyncActive 
+                      ? "Server checks the form every 45 seconds. New submissions land in Unapproved Pool automatically!"
+                      : "Turn on to automatically ingest new submissions as players register."}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                  {autoSyncActive ? (
+                    <button
+                      onClick={() => handleToggleAutoSync(false)}
+                      disabled={loading}
+                      className="px-3.5 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-bold cursor-pointer transition"
+                      type="button"
+                    >
+                      Turn Off
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleToggleAutoSync(true)}
+                      disabled={loading || !googleSheetUrl.trim()}
+                      className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black shadow-lg shadow-emerald-500/20 cursor-pointer transition disabled:opacity-40"
+                      type="button"
+                    >
+                      🚀 Enable Auto-Sync
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 pt-1">
+                {lastSyncedAt ? (
+                  <span className="text-[10px] text-white/40">
+                    Last checked: {new Date(lastSyncedAt).toLocaleTimeString()}
+                  </span>
+                ) : <span />}
+                
                 <button
                   onClick={handleSyncGoogleSheet}
                   disabled={loading || !googleSheetUrl.trim()}
-                  className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-xs flex items-center gap-2 shadow-lg shadow-amber-500/20 disabled:opacity-40 cursor-pointer transition"
+                  className="px-4 py-2 rounded-2xl bg-white/[0.08] hover:bg-white/[0.12] text-white text-xs font-semibold flex items-center gap-2 border border-white/10 cursor-pointer transition disabled:opacity-40"
                   type="button"
                 >
-                  <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-                  <span>{loading ? "Syncing..." : "⚡ Sync from Google Forms"}</span>
+                  <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+                  <span>{loading ? "Syncing..." : "⚡ Sync Once Now"}</span>
                 </button>
               </div>
             </div>
