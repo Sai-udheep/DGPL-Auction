@@ -38,10 +38,58 @@ export default function MyTeamModal({ isOpen, onClose }) {
 
       // 2. Fetch all players acquired by this team
       const pRes = await fetch(`${API_URL}/api/v1/players?team=${teamId}&limit=100`);
+      let squadList = [];
       if (pRes.ok) {
         const pData = await pRes.json();
-        setPlayers(pData?.data?.players || []);
+        squadList = pData?.data?.players || [];
       }
+
+      // 3. Ensure Captain is always included in the squad list
+      const capRef = teamObj?.captain || user?.playerProfile;
+      let captainPlayer = null;
+
+      if (capRef) {
+        if (typeof capRef === "object" && capRef._id) {
+          captainPlayer = {
+            ...capRef,
+            isCaptain: true,
+            finalBidPrice: capRef.finalBidPrice ?? 0,
+          };
+        } else if (typeof capRef === "string") {
+          const inList = squadList.find((p) => String(p._id) === String(capRef));
+          if (inList) {
+            inList.isCaptain = true;
+          } else {
+            try {
+              const cRes = await fetch(`${API_URL}/api/v1/players/${capRef}`);
+              if (cRes.ok) {
+                const cData = await cRes.json();
+                const fetched = cData?.data?.player || cData?.data?.doc || cData?.body;
+                if (fetched) {
+                  captainPlayer = {
+                    ...fetched,
+                    isCaptain: true,
+                    finalBidPrice: fetched.finalBidPrice ?? 0,
+                  };
+                }
+              }
+            } catch (_) {}
+          }
+        }
+      }
+
+      if (captainPlayer && !squadList.some((p) => String(p._id) === String(captainPlayer._id))) {
+        squadList = [captainPlayer, ...squadList];
+      }
+
+      // Mark captain flag and sort captain to top
+      squadList = squadList.map((p) => {
+        const isCap = p.isCaptain || (capRef && String(p._id) === String(capRef?._id || capRef));
+        return isCap ? { ...p, isCaptain: true, finalBidPrice: p.finalBidPrice ?? 0 } : p;
+      });
+
+      squadList.sort((a, b) => (b.isCaptain ? 1 : 0) - (a.isCaptain ? 1 : 0));
+      setPlayers(squadList);
     } catch (err) {
       setError(err.message || "Failed to load team data");
     } finally {
