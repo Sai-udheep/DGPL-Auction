@@ -18,6 +18,8 @@ function App() {
   const [activeTab, setActiveTab] = useState("live");
   const [currentPlayer, setCurrentPlayer] = useState(null);
   const [isAuctionActive, setIsAuctionActive] = useState(false);
+  const [tournamentTitle, setTournamentTitle] = useState("DGPL Season 11");
+  const [tournamentMode, setTournamentMode] = useState("Official Auction");
   const [teams, setTeams] = useState([]);
   const [recentlySold, setRecentlySold] = useState(null);
   const [recentlyUnsold, setRecentlyUnsold] = useState(null);
@@ -157,6 +159,8 @@ function App() {
     socket.on("server:player_unsold", handlePlayerUnsold);
     socket.on("server:auction_status_changed", handleAuctionStatusChanged);
     socket.on("server:auction_reset", handleAuctionReset);
+    socket.on("server:player_withdrawn", handlePlayerWithdrawn);
+    socket.on("server:tournament_info_changed", handleTournamentInfoChanged);
 
     return () => {
       socket.off("new_player", handleNewPlayer);
@@ -168,6 +172,8 @@ function App() {
       socket.off("server:player_unsold", handlePlayerUnsold);
       socket.off("server:auction_status_changed", handleAuctionStatusChanged);
       socket.off("server:auction_reset", handleAuctionReset);
+      socket.off("server:player_withdrawn", handlePlayerWithdrawn);
+      socket.off("server:tournament_info_changed", handleTournamentInfoChanged);
     };
   }, [socket, isConnected]);
 
@@ -238,7 +244,7 @@ function App() {
           </div>
         )}
 
-        <Header />
+        <Header tournamentTitle={tournamentTitle} tournamentMode={tournamentMode} />
 
         <Routes>
           <Route
