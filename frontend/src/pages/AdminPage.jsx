@@ -788,7 +788,7 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-2 sm:px-4 pt-2 pb-10 space-y-4 sm:space-y-5">
+    <div className="max-w-6xl mx-auto px-2 sm:px-4 pt-2 pb-10 space-y-4 sm:space-y-5 w-full min-w-0 max-w-full">
       {/* Live Ongoing Player Spotlight Stage (Pinned at Top for Admin) */}
       {currentAuctionPlayerId && (
         <AdminLiveStage
@@ -820,7 +820,7 @@ export default function AdminPage() {
         </div>
 
         {/* Stats Row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 w-full min-w-0">
           {[
             {
               label: "Available",
@@ -845,12 +845,12 @@ export default function AdminPage() {
           ].map((s) => (
             <div
               key={s.label}
-              className="glass-card p-2.5 sm:p-3 text-center border-white/[0.07]"
+              className="glass-card p-2.5 sm:p-3 text-center border-white/[0.07] min-w-0 overflow-hidden"
             >
-              <p className={`text-lg sm:text-2xl font-black ${s.color}`}>
+              <p className={`text-lg sm:text-2xl font-black ${s.color} truncate`}>
                 {s.value}
               </p>
-              <p className="text-[9px] sm:text-[10px] text-white/40 uppercase tracking-widest font-semibold mt-0.5">
+              <p className="text-[9px] sm:text-[10px] text-white/40 uppercase tracking-widest font-semibold mt-0.5 truncate">
                 {s.label}
               </p>
             </div>
@@ -858,7 +858,7 @@ export default function AdminPage() {
         </div>
 
                 {/* Action Buttons Row - Color Coded By Intent */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 w-full min-w-0">
           {/* Group 1: Tournament & Roster Tools (Neutral Glass) */}
           <button
             onClick={() => setIsTeamsModalOpen(true)}
@@ -901,7 +901,7 @@ export default function AdminPage() {
             <span>Upload Players</span>
           </button>
 
-          <div className="flex-1 hidden sm:block" />
+          
 
           {/* Auction In-Progress Live Pill */}
           {currentAuctionPlayerId && (

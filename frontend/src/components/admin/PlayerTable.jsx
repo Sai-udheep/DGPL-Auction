@@ -29,7 +29,7 @@ export default function PlayerTable({
     !display.some((p) => String(p._id) === String(currentAuctionPlayerId) && p.status === "in_auction");
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 w-full min-w-0 max-w-full">
       {/* 1. Mobile & Windowed Card View (< md) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 md:hidden">
         {display.map((p) => {
@@ -253,30 +253,30 @@ export default function PlayerTable({
       </div>
 
       {/* 2. Desktop Table View (>= md) */}
-      <div className="hidden md:block glass-card overflow-hidden">
+      <div className="hidden md:block glass-card overflow-hidden w-full max-w-full min-w-0">
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          <table className="w-full text-left min-w-[650px]">
             <thead>
               <tr className="border-b border-white/[0.07]">
-                <th className="px-5 py-3.5 text-[10px] font-extrabold text-white/40 uppercase tracking-widest">
+                <th className="px-3.5 py-3 sm:px-4 sm:py-3.5 text-[10px] font-extrabold text-white/40 uppercase tracking-widest">
                   Player
                 </th>
-                <th className="px-5 py-3.5 text-[10px] font-extrabold text-white/40 uppercase tracking-widest">
+                <th className="px-3.5 py-3 sm:px-4 sm:py-3.5 text-[10px] font-extrabold text-white/40 uppercase tracking-widest">
                   Category
                 </th>
-                <th className="px-5 py-3.5 text-[10px] font-extrabold text-white/40 uppercase tracking-widest">
+                <th className="px-3.5 py-3 sm:px-4 sm:py-3.5 text-[10px] font-extrabold text-white/40 uppercase tracking-widest">
                   Base
                 </th>
-                <th className="px-5 py-3.5 text-[10px] font-extrabold text-white/40 uppercase tracking-widest">
+                <th className="px-3.5 py-3 sm:px-4 sm:py-3.5 text-[10px] font-extrabold text-white/40 uppercase tracking-widest">
                   Current Bid
                 </th>
-                <th className="px-5 py-3.5 text-[10px] font-extrabold text-white/40 uppercase tracking-widest">
+                <th className="px-3.5 py-3 sm:px-4 sm:py-3.5 text-[10px] font-extrabold text-white/40 uppercase tracking-widest">
                   Leading Team
                 </th>
-                <th className="px-5 py-3.5 text-[10px] font-extrabold text-white/40 uppercase tracking-widest">
+                <th className="px-3.5 py-3 sm:px-4 sm:py-3.5 text-[10px] font-extrabold text-white/40 uppercase tracking-widest">
                   Status
                 </th>
-                <th className="px-5 py-3.5 text-[10px] font-extrabold text-white/40 uppercase tracking-widest text-right">
+                <th className="px-3.5 py-3 sm:px-4 sm:py-3.5 text-[10px] font-extrabold text-white/40 uppercase tracking-widest text-right">
                   Actions
                 </th>
               </tr>
@@ -316,7 +316,7 @@ export default function PlayerTable({
                     }`}
                   >
                     {/* Name / Avatar */}
-                    <td className="px-5 py-3.5 text-xs font-semibold text-white">
+                    <td className="px-3.5 py-3 sm:px-4 sm:py-3.5 text-xs font-semibold text-white">
                       <div className="flex items-center gap-2.5">
                         {p.image ? (
                           <img
@@ -335,29 +335,29 @@ export default function PlayerTable({
                     </td>
 
                     {/* Category */}
-                    <td className="px-5 py-3.5 text-xs text-white/70">
+                    <td className="px-3.5 py-3 sm:px-4 sm:py-3.5 text-xs text-white/70">
                       <span className="uppercase text-[10px] font-bold px-2 py-0.5 rounded-md bg-white/[0.06] border border-white/10 text-white/80 whitespace-nowrap">
                         {p.category || "-"}
                       </span>
                     </td>
 
                     {/* Base Price */}
-                    <td className="px-5 py-3.5 text-xs text-white/60 font-medium whitespace-nowrap">
+                    <td className="px-3.5 py-3 sm:px-4 sm:py-3.5 text-xs text-white/60 font-medium whitespace-nowrap">
                       {p.basePrice != null ? `${p.basePrice} Pts` : "-"}
                     </td>
 
                     {/* Current Bid */}
-                    <td className="px-5 py-3.5 text-xs text-emerald-400 font-extrabold whitespace-nowrap">
+                    <td className="px-3.5 py-3 sm:px-4 sm:py-3.5 text-xs text-emerald-400 font-extrabold whitespace-nowrap">
                       {currentBid}
                     </td>
 
                     {/* Leading Team */}
-                    <td className="px-5 py-3.5 text-xs text-white/90 font-semibold whitespace-nowrap">
+                    <td className="px-3.5 py-3 sm:px-4 sm:py-3.5 text-xs text-white/90 font-semibold whitespace-nowrap">
                       {leadingTeamName}
                     </td>
 
                     {/* Status Badge */}
-                    <td className="px-5 py-3.5 text-xs whitespace-nowrap">
+                    <td className="px-3.5 py-3 sm:px-4 sm:py-3.5 text-xs whitespace-nowrap">
                       {isLive ? (
                         <span className="inline-flex items-center gap-1.5 text-slate-950 bg-gradient-to-r from-amber-400 to-orange-400 px-2.5 py-0.5 rounded-full text-[10px] font-black shadow-sm">
                           <span className="w-1.5 h-1.5 rounded-full bg-black animate-ping" />
@@ -377,7 +377,7 @@ export default function PlayerTable({
                     </td>
 
                     {/* Actions */}
-                    <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                    <td className="px-3.5 py-3 sm:px-4 sm:py-3.5 text-right whitespace-nowrap">
                       <div className="inline-flex items-center justify-end gap-2">
                         {isSoldPool ? (
                           // Sold pool: show team & points

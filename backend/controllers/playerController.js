@@ -14,7 +14,10 @@ exports.getAllPlayers = catchAsync(async (req, res, next) => {
     String(req.query.includeCaptains || 'false') === 'true';
   const baseFilter = includeCaptains ? {} : { isCaptain: { $ne: true } };
 
-  const features = new APIFeatures(Player.find(baseFilter), req.query)
+  const queryObj = { ...req.query };
+  delete queryObj.includeCaptains;
+
+  const features = new APIFeatures(Player.find(baseFilter), queryObj)
     .filter()
     .sorting()
     .limitFields()

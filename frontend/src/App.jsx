@@ -237,7 +237,7 @@ function App() {
       </div>
 
       {/* Main App Container */}
-      <div className="relative z-10 flex flex-col min-h-screen">
+      <div className="relative z-10 flex flex-col min-h-screen w-full max-w-full overflow-x-hidden min-w-0">
         {/* Toast Container */}
         {toasts.length > 0 && (
           <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-3 items-center w-full max-w-md px-4 pointer-events-none">
