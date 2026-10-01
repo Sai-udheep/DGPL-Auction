@@ -1,5 +1,6 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useAuth } from "../context/authContextCore";
+import { useSocket } from "../context/useSocket";
 import { API_URL } from "../config";
 import SummarySkeleton from "./SummarySkeleton";
 import SummaryFilter from "./SummaryFilter";
@@ -14,6 +15,7 @@ import TeamDetailView from "./TeamDetailView";
  */
 const AuctionSummary = () => {
   const { token } = useAuth();
+  const { socket } = useSocket() || {};
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [teams, setTeams] = useState([]);
   const [players, setPlayers] = useState([]);
@@ -21,66 +23,85 @@ const AuctionSummary = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Fetch teams & players in parallel on mount
-  useEffect(() => {
-    let isCancelled = false;
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const headers = token
-          ? { Authorization: `Bearer ${token}` }
-          : undefined;
-        const base = API_URL;
-        const [teamsRes, playersRes] = await Promise.all([
-          fetch(`${base}/api/v1/teams`, { headers }),
-          fetch(`${base}/api/v1/players?limit=500`, { headers }),
-        ]);
-        if (!teamsRes.ok || !playersRes.ok) {
-          throw new Error("Failed to load auction data");
-        }
-        const teamsData = await teamsRes.json();
-        const playersData = await playersRes.json();
-        if (isCancelled) return;
-
-        const rawTeams =
-          teamsData.data?.teams ||
-          teamsData.data?.docs ||
-          teamsData.data ||
-          teamsData;
-        const rawPlayers =
-          playersData.data?.players ||
-          playersData.data?.docs ||
-          playersData.data ||
-          playersData;
-
-        const allPlayers = Array.isArray(rawPlayers) ? rawPlayers : [];
-        setTeams(Array.isArray(rawTeams) ? rawTeams : []);
-        setPlayers(allPlayers);
-
-        // Derive available players from complete pool: not captains, not assigned to team, not sold, not marked permanently unsold
-        const available = allPlayers.filter(
-          (p) => !p.isCaptain && !p.team && p.status !== "sold" && !p.markedUnsold
-        );
-        setAvailablePlayers(available);
-      } catch (err) {
-        if (!isCancelled) setError(err.message || "Unknown error");
-      } finally {
-        if (!isCancelled) setLoading(false);
+  const fetchData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    setError(null);
+    try {
+      const headers = token
+        ? { Authorization: `Bearer ${token}` }
+        : undefined;
+      const base = API_URL;
+      const [teamsRes, playersRes] = await Promise.all([
+        fetch(`${base}/api/v1/teams`, { headers }),
+        fetch(`${base}/api/v1/players?limit=500`, { headers }),
+      ]);
+      if (!teamsRes.ok || !playersRes.ok) {
+        throw new Error("Failed to load auction data");
       }
-    };
-    fetchData();
-    return () => {
-      isCancelled = true;
-    };
+      const teamsData = await teamsRes.json();
+      const playersData = await playersRes.json();
+
+      const rawTeams =
+        teamsData.data?.teams ||
+        teamsData.data?.docs ||
+        teamsData.data ||
+        teamsData;
+      const rawPlayers =
+        playersData.data?.players ||
+        playersData.data?.docs ||
+        playersData.data ||
+        playersData;
+
+      const allPlayers = Array.isArray(rawPlayers) ? rawPlayers : [];
+      setTeams(Array.isArray(rawTeams) ? rawTeams : []);
+      setPlayers(allPlayers);
+
+      // Derive available players from complete pool: not captains, not assigned to team, not sold, not marked permanently unsold, and approved
+      const available = allPlayers.filter(
+        (p) => !p.isCaptain && !p.team && p.status !== "sold" && !p.markedUnsold && p.isApproved !== false
+      );
+      setAvailablePlayers(available);
+    } catch (err) {
+      setError(err.message || "Unknown error");
+    } finally {
+      setLoading(false);
+    }
   }, [token]);
+
+  // Initial load
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Real-time synchronization
+  useEffect(() => {
+    if (!socket) return;
+    const handleUpdate = () => {
+      fetchData(true);
+    };
+    socket.on("server:players_updated", handleUpdate);
+    socket.on("player_sold", handleUpdate);
+    socket.on("server:player_sold", handleUpdate);
+    socket.on("player_unsold", handleUpdate);
+    socket.on("server:player_unsold", handleUpdate);
+
+    return () => {
+      socket.off("server:players_updated", handleUpdate);
+      socket.off("player_sold", handleUpdate);
+      socket.off("server:player_sold", handleUpdate);
+      socket.off("player_unsold", handleUpdate);
+      socket.off("server:player_unsold", handleUpdate);
+    };
+  }, [socket, fetchData]);
 
   // Map for quick team lookup
   const teamMap = useMemo(() => new Map(teams.map((t) => [t._id, t])), [teams]);
 
   // Recently sold (exclude captains)
   const recentSold = useMemo(() => {
-    const sold = players.filter((p) => p.status === "sold" && !p.isCaptain);
+    const sold = players.filter(
+      (p) => p.status === "sold" && !p.isCaptain && p.isApproved !== false
+    );
     return sold.slice().sort((a, b) => {
       // Try last bid timestamp if present
       const aTime = a.bidHistory?.length

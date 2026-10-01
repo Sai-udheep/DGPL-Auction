@@ -6,6 +6,46 @@ const AppError = require('./../utils/appError');
 const APIFeatures = require('./../utils/apiFeatures');
 const handlerFactory = require('./handlerFactory');
 
+// Helper to parse academic year from strings like "4th Year", "3rd Year", "Year 2", "1st", "4th", "4", etc.
+const parseAcademicYear = (val) => {
+  if (!val) return 1;
+  const s = String(val).trim();
+  const match = s.match(/([1-4])(?:st|nd|rd|th)?/i) || s.match(/\d+/);
+  if (match) {
+    const y = parseInt(match[1] || match[0], 10);
+    return Math.max(1, Math.min(4, y));
+  }
+  return 1;
+};
+
+// Robust CSV/TSV line parser preserving complete multi-word names and space-containing values
+const splitCsvLine = (line, delimiter = ',') => {
+  if (delimiter === '\t') {
+    return line.split('\t').map((c) => c.trim().replace(/^"|"$/g, ''));
+  }
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === delimiter && !inQuotes) {
+      result.push(current.trim().replace(/^"|"$/g, ''));
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim().replace(/^"|"$/g, ''));
+  return result;
+};
+
 // Helper to auto-calculate base price from academic year
 const getAutoBasePrice = (year) => {
   const y = parseInt(year, 10);
@@ -261,6 +301,14 @@ const syncSheetCore = async (sheetUrl, asUnapproved = true, io = null) => {
       }
       if (!name) continue;
 
+      const isAlreadyInBatch = newPlayersToInsert.some(
+        (p) => p.name.trim().toLowerCase() === name.trim().toLowerCase()
+      );
+      if (isAlreadyInBatch) {
+        skippedDuplicates++;
+        continue;
+      }
+
       const existing = await Player.findOne({ name: new RegExp(`^${name}$`, 'i') });
       if (existing) {
         skippedDuplicates++;
@@ -279,11 +327,7 @@ const syncSheetCore = async (sheetUrl, asUnapproved = true, io = null) => {
       const yearKey = Object.keys(entry).find((k) =>
         k.includes('year') || k.includes('academic') || k.includes('batch') || k.includes('participation')
       );
-      let year = 1;
-      if (yearKey && entry[yearKey]) {
-        const yMatch = entry[yearKey].match(/\d+/);
-        if (yMatch) year = parseInt(yMatch[0], 10);
-      }
+      const year = parseAcademicYear(yearKey ? entry[yearKey] : 1);
       const basePrice = getAutoBasePrice(year);
 
       const photoKey = Object.keys(entry).find((k) =>
@@ -314,7 +358,7 @@ const syncSheetCore = async (sheetUrl, asUnapproved = true, io = null) => {
     }
   } else {
     const delimiter = lines[0].includes('\t') ? '\t' : ',';
-    const headers = lines[0].split(delimiter).map((h) => h.trim().toLowerCase().replace(/['"]/g, ''));
+    const headers = splitCsvLine(lines[0], delimiter).map((h) => h.toLowerCase().replace(/['"]/g, ''));
     const fullNameIdx = headers.findIndex((h) => h.includes('full') && h.includes('name'));
     const firstNameIdx = headers.findIndex((h) => h.includes('first') && h.includes('name'));
     const lastNameIdx = headers.findIndex((h) => (h.includes('last') || h.includes('second') || h.includes('surname')));
@@ -327,9 +371,7 @@ const syncSheetCore = async (sheetUrl, asUnapproved = true, io = null) => {
 
     if (nameIdx !== -1) {
       for (let i = 1; i < lines.length; i++) {
-        const cells = delimiter === '\t'
-          ? lines[i].split('\t').map((c) => c.trim().replace(/^"|"$/g, ''))
-          : (lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || lines[i].split(',')).map((c) => c.trim().replace(/^"|"$/g, ''));
+        const cells = splitCsvLine(lines[i], delimiter);
 
         let name = '';
         if (fullNameIdx !== -1 && cells[fullNameIdx]) {
@@ -340,6 +382,14 @@ const syncSheetCore = async (sheetUrl, asUnapproved = true, io = null) => {
           name = cells[nameIdx].trim();
         }
         if (!name) continue;
+
+        const isAlreadyInBatch = newPlayersToInsert.some(
+          (p) => p.name.trim().toLowerCase() === name.trim().toLowerCase()
+        );
+        if (isAlreadyInBatch) {
+          skippedDuplicates++;
+          continue;
+        }
 
         const existing = await Player.findOne({ name: new RegExp(`^${name}$`, 'i') });
         if (existing) {
@@ -354,11 +404,7 @@ const syncSheetCore = async (sheetUrl, asUnapproved = true, io = null) => {
         else if (catLower.includes('bowl')) category = 'Bowler';
         else if (catLower.includes('keep') || catLower.includes('wk') || catLower.includes('wicket')) category = 'Wicket-Keeper';
 
-        let year = 1;
-        if (yearIdx >= 0 && cells[yearIdx]) {
-          const yMatch = cells[yearIdx].match(/\d+/);
-          if (yMatch) year = parseInt(yMatch[0], 10);
-        }
+        const year = parseAcademicYear(yearIdx >= 0 ? cells[yearIdx] : 1);
 
         let basePrice = getAutoBasePrice(year);
         if (priceIdx >= 0 && cells[priceIdx] && !isNaN(parseFloat(cells[priceIdx]))) {
@@ -516,7 +562,11 @@ exports.uploadPlayers = catchAsync(async (req, res, next) => {
   if (Array.isArray(rawData)) {
     for (const item of rawData) {
       if (!item.name) continue;
-      const year = parseInt(item.year, 10) || 1;
+      const alreadyQueued = playersToInsert.some(
+        (p) => p.name.trim().toLowerCase() === item.name.trim().toLowerCase()
+      );
+      if (alreadyQueued) continue;
+      const year = parseAcademicYear(item.year);
       const basePrice = item.basePrice != null && item.basePrice !== ""
         ? parseFloat(item.basePrice)
         : getAutoBasePrice(year);
@@ -540,7 +590,7 @@ exports.uploadPlayers = catchAsync(async (req, res, next) => {
         const parsedJson = JSON.parse(trimmed);
         for (const item of parsedJson) {
           if (!item.name) continue;
-          const year = parseInt(item.year, 10) || 1;
+          const year = parseAcademicYear(item.year);
           const basePrice = item.basePrice != null && item.basePrice !== ""
             ? parseFloat(item.basePrice)
             : getAutoBasePrice(year);
@@ -608,6 +658,10 @@ exports.uploadPlayers = catchAsync(async (req, res, next) => {
         }
       }
       if (!name) continue;
+      const alreadyQueued = playersToInsert.some(
+        (p) => p.name.trim().toLowerCase() === name.trim().toLowerCase()
+      );
+      if (alreadyQueued) continue;
 
           const roleKey = Object.keys(entry).find((k) =>
             k.includes('role') || k.includes('category') || k.includes('skill') || k.includes('playing')
@@ -621,11 +675,7 @@ exports.uploadPlayers = catchAsync(async (req, res, next) => {
           const yearKey = Object.keys(entry).find((k) =>
             k.includes('year') || k.includes('academic') || k.includes('batch') || k.includes('participation')
           );
-          let year = 1;
-          if (yearKey && entry[yearKey]) {
-            const yMatch = entry[yearKey].match(/\d+/);
-            if (yMatch) year = parseInt(yMatch[0], 10);
-          }
+          const year = parseAcademicYear(yearKey ? entry[yearKey] : 1);
           const basePrice = getAutoBasePrice(year);
 
           const photoKey = Object.keys(entry).find((k) =>
@@ -656,7 +706,7 @@ exports.uploadPlayers = catchAsync(async (req, res, next) => {
         }
       } else {
         const delimiter = lines[0].includes('\t') ? '\t' : ',';
-        const headers = lines[0].split(delimiter).map((h) => h.trim().toLowerCase().replace(/['"]/g, ''));
+        const headers = splitCsvLine(lines[0], delimiter).map((h) => h.toLowerCase().replace(/['"]/g, ''));
         const fullNameIdx = headers.findIndex((h) => h.includes('full') && h.includes('name'));
     const firstNameIdx = headers.findIndex((h) => h.includes('first') && h.includes('name'));
     const lastNameIdx = headers.findIndex((h) => (h.includes('last') || h.includes('second') || h.includes('surname')));
@@ -672,9 +722,7 @@ exports.uploadPlayers = catchAsync(async (req, res, next) => {
         }
 
         for (let i = 1; i < lines.length; i++) {
-          const cells = delimiter === '\t'
-            ? lines[i].split('\t').map((c) => c.trim().replace(/^"|"$/g, ''))
-            : (lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || lines[i].split(',')).map((c) => c.trim().replace(/^"|"$/g, ''));
+          const cells = splitCsvLine(lines[i], delimiter);
 
         let name = '';
         if (fullNameIdx !== -1 && cells[fullNameIdx]) {
@@ -685,6 +733,10 @@ exports.uploadPlayers = catchAsync(async (req, res, next) => {
           name = cells[nameIdx].trim();
         }
         if (!name) continue;
+        const alreadyQueued = playersToInsert.some(
+          (p) => p.name.trim().toLowerCase() === name.trim().toLowerCase()
+        );
+        if (alreadyQueued) continue;
 
           let category = catIdx >= 0 ? cells[catIdx] : 'All-Rounder';
           const catLower = category.toLowerCase();
@@ -693,8 +745,7 @@ exports.uploadPlayers = catchAsync(async (req, res, next) => {
           else if (catLower.includes('keep') || catLower.includes('wk')) category = 'Wicket-Keeper';
           else category = 'All-Rounder';
 
-          const yearVal = yearIdx >= 0 ? parseInt(cells[yearIdx], 10) : 1;
-          const year = isNaN(yearVal) ? 1 : yearVal;
+          const year = parseAcademicYear(yearIdx >= 0 ? cells[yearIdx] : 1);
 
           let basePrice;
           if (priceIdx >= 0 && cells[priceIdx] && !isNaN(parseFloat(cells[priceIdx]))) {

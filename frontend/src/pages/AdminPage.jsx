@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import YearSelector from "../components/admin/YearSelector";
 import PlayerTable from "../components/admin/PlayerTable";
 import CsvUploadModal from "../components/admin/CsvUploadModal";
@@ -653,10 +653,10 @@ export default function AdminPage() {
 
   // Derive player pools for the selected year
   const availablePlayers = players.filter(
-    (p) => !p.isCaptain && !p.team && p.status !== "sold" && !p.markedUnsold
+    (p) => !p.isCaptain && !p.team && p.status !== "sold" && !p.markedUnsold && p.isApproved !== false
   );
   const unsoldPool = players.filter(
-    (p) => p.status === "unsold" && p.markedUnsold
+    (p) => p.status === "unsold" && p.markedUnsold && p.isApproved !== false
   );
   const inAuctionPlayers = players.filter((p) => p.status === "in_auction");
   const soldPlayers = players.filter((p) => p.status === "sold");
@@ -817,7 +817,7 @@ export default function AdminPage() {
       csvRows.push('"Player Name","Category","Academic Year","Base Price","Status"');
 
       const unsoldPlayers = allP.filter((p) => {
-        return !p.isCaptain && !p.team && p.status !== "sold";
+        return !p.isCaptain && !p.team && p.status !== "sold" && p.isApproved !== false;
       });
 
       // Sort unsold: 4th year down to 1st year, then alphabetical
@@ -1158,14 +1158,14 @@ export default function AdminPage() {
       {!loading && !error && selectedYear != null && (
         <>
           {/* Available + In Auction pool */}
-          {nonSoldPlayers.filter((p) => !p.markedUnsold).length === 0 &&
+          {nonSoldPlayers.filter((p) => !p.markedUnsold && p.isApproved !== false).length === 0 &&
           inAuctionPlayers.length === 0 ? (
             <div className="glass-card p-8 text-center text-white/50 text-xs">
               No available players remaining for this academic year.
             </div>
           ) : (
             <PlayerTable
-              players={players.filter((p) => p.status !== "sold" && !p.markedUnsold)}
+              players={players.filter((p) => p.status !== "sold" && !p.markedUnsold && p.isApproved !== false)}
               onStartAuction={handleStartAuction}
               onSellPlayer={handleSellPlayer}
               onMarkUnsold={handleMarkUnsold}
