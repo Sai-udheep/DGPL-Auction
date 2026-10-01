@@ -616,12 +616,12 @@ export default function AdminPage() {
   const nonSoldPlayers = players.filter((p) => p.status !== "sold");
 
   // Export entire tournament rosters to CSV
-  const handleExportCsv = async () => {
+    const handleExportCsv = async () => {
     setExporting(true);
     setAuctionMessage(null);
     try {
       const [pRes, tRes] = await Promise.all([
-        fetch(`${API_URL}/api/v1/players?limit=400`),
+        fetch(`${API_URL}/api/v1/players?limit=500`),
         fetch(`${API_URL}/api/v1/teams`),
       ]);
       const pData = await pRes.json();
@@ -630,66 +630,144 @@ export default function AdminPage() {
       const allP = pData?.data?.players || [];
       const allT = tData?.data?.teams || [];
 
-      const teamMap = {};
-      allT.forEach((t) => {
-        teamMap[String(t._id)] = t.name;
+      if (allT.length === 0) {
+        throw new Error("No teams found to export");
+      }
+
+      // Build roster for each team (including captain)
+      const teamRosters = allT.map((t) => {
+        const tId = String(t._id);
+        const capId = t.captain ? String(t.captain._id || t.captain) : null;
+
+        // Find all players assigned or sold to this team
+        let tPlayers = allP.filter((p) => {
+          const pTeamId = String(p.team?._id || p.team);
+          return pTeamId === tId || (capId && String(p._id) === capId);
+        });
+
+        // Ensure captain is explicitly included and marked
+        if (capId && !tPlayers.some((p) => String(p._id) === capId)) {
+          const capPlayer = allP.find((p) => String(p._id) === capId);
+          if (capPlayer) {
+            tPlayers.unshift({ ...capPlayer, isCaptain: true, finalBidPrice: 0 });
+          }
+        }
+
+        // Sort: captain first, then by bid price descending
+        tPlayers = tPlayers.map((p) => {
+          const isCap = p.isCaptain || (capId && String(p._id) === capId);
+          return isCap ? { ...p, isCaptain: true, finalBidPrice: p.finalBidPrice ?? 0 } : p;
+        });
+
+        tPlayers.sort((a, b) => (b.isCaptain ? 1 : 0) - (a.isCaptain ? 1 : 0));
+
+        return {
+          team: t,
+          players: tPlayers,
+        };
       });
 
-      const rows = [
-        ["Team", "Player Name", "Category", "Year", "Points", "Status"],
-      ];
+      // Find maximum squad size to align side-by-side columns
+      const maxSquadSize = Math.max(1, ...teamRosters.map((tr) => tr.players.length));
 
-      // 1. Sold players grouped by team
-      allP
-        .filter((p) => p.status === "sold")
-        .sort((a, b) => {
-          const teamA = teamMap[String(a.team?._id || a.team)] || "Unknown";
-          const teamB = teamMap[String(b.team?._id || b.team)] || "Unknown";
-          return teamA.localeCompare(teamB);
-        })
-        .forEach((p) => {
-          const tName = teamMap[String(p.team?._id || p.team)] || p.teamName || "Assigned Team";
-          const price = p.isCaptain
-            ? "Captain (Retained)"
-            : `${p.finalBidPrice != null ? p.finalBidPrice : "-"} Pts`;
-          rows.push([
-            `"${tName}"`,
-            `"${p.name}"`,
-            `"${p.category || "All-Rounder"}"`,
-            p.year || "1",
-            `"${price}"`,
-            "Sold",
-          ]);
+      const csvRows = [];
+
+      // Row 1: Team Names across columns side-by-side
+      const row1 = [];
+      teamRosters.forEach((tr) => {
+        row1.push(`"${tr.team.name}"`, '""', '""', '""', '""');
+      });
+      csvRows.push(row1.join(","));
+
+      // Row 2: Sub-headers for each team
+      const row2 = [];
+      teamRosters.forEach(() => {
+        row2.push('"Player Name"', '"Category"', '"Academic Year"', '"Points Paid"', '""');
+      });
+      csvRows.push(row2.join(","));
+
+      // Data Rows: Side-by-side player rows
+      for (let i = 0; i < maxSquadSize; i++) {
+        const row = [];
+        teamRosters.forEach((tr) => {
+          const p = tr.players[i];
+          if (p) {
+            const pName = p.isCaptain ? `👑 ${p.name} (Captain)` : p.name;
+            const pts = p.isCaptain ? "Retained" : `${p.finalBidPrice ?? 0} Pts`;
+            row.push(
+              `"${pName.replace(/"/g, '""')}"`,
+              `"${p.category || "All-Rounder"}"`,
+              `"Year ${p.year || 1}"`,
+              `"${pts}"`,
+              '""'
+            );
+          } else {
+            row.push('""', '""', '""', '""', '""');
+          }
         });
+        csvRows.push(row.join(","));
+      }
 
-      // 2. Unsold pool
-      allP
-        .filter((p) => p.status !== "sold")
-        .forEach((p) => {
-          rows.push([
-            `"Unassigned"`,
-            `"${p.name}"`,
+      // Summary Row: Total Players & Remaining Purse
+      csvRows.push('""');
+      const summaryRow = [];
+      teamRosters.forEach((tr) => {
+        summaryRow.push(
+          `"Total Squad: ${tr.players.length}"`,
+          `"Remaining Purse: ${tr.team.budget ?? 100} Pts"`,
+          '""',
+          '""',
+          '""'
+        );
+      });
+      csvRows.push(summaryRow.join(","));
+
+      // Empty spacing before unsold pool
+      csvRows.push('""');
+      csvRows.push('""');
+
+      // --- UNSOLD PLAYERS SECTION AT LAST ---
+      csvRows.push('"=== UNSOLD PLAYERS POOL ==="');
+      csvRows.push('"Player Name","Category","Academic Year","Base Price","Status"');
+
+      const soldPlayerIds = new Set();
+      teamRosters.forEach((tr) => {
+        tr.players.forEach((p) => soldPlayerIds.add(String(p._id)));
+      });
+
+      const unsoldPlayers = allP.filter(
+        (p) => !soldPlayerIds.has(String(p._id)) && p.status !== "sold"
+      );
+
+      if (unsoldPlayers.length === 0) {
+        csvRows.push('"No unsold players in tournament","","","",""');
+      } else {
+        unsoldPlayers.forEach((p) => {
+          const status = p.markedUnsold ? "Marked Unsold" : "Available";
+          csvRows.push(
+            `"${p.name.replace(/"/g, '""')}"`,
             `"${p.category || "All-Rounder"}"`,
-            p.year || "1",
-            `"0 Pts"`,
-            p.markedUnsold ? "Marked Unsold" : "Available",
-          ]);
+            `"Year ${p.year || 1}"`,
+            `"${p.basePrice ?? 0} Pts"`,
+            `"${status}"`
+          );
         });
+      }
 
-      const csvContent = rows.map((r) => r.join(",")).join("\n");
+      const csvContent = csvRows.join(String.fromCharCode(10));
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.setAttribute("href", url);
       link.setAttribute(
         "download",
-        `DGPL_Tournament_Rosters_${new Date().toISOString().slice(0, 10)}.csv`
+        `DGPL_Tournament_Rosters_SideBySide_${new Date().toISOString().slice(0, 10)}.csv`
       );
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
 
-      setAuctionMessage("Tournament CSV exported successfully!");
+      setAuctionMessage("Side-by-side tournament CSV exported successfully!");
     } catch (err) {
       setAuctionMessage("Failed to export CSV: " + err.message);
     } finally {
@@ -1117,7 +1195,6 @@ export default function AdminPage() {
       <AdminTeamsModal
         isOpen={isTeamsModalOpen}
         onClose={() => setIsTeamsModalOpen(false)}
-        teams={teams}
       />
 
       {/* Captains Assignment Modal */}

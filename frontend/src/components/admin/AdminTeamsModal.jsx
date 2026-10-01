@@ -52,10 +52,58 @@ export default function AdminTeamsModal({ isOpen, onClose }) {
       setLoadingPlayers(true);
       try {
         const res = await fetch(`${API_URL}/api/v1/players?team=${selectedTeamId}&limit=100`);
+        let list = [];
         if (res.ok) {
           const data = await res.json();
-          setTeamPlayers(data?.data?.players || []);
+          list = data?.data?.players || [];
         }
+
+        // Include Captain if not returned in team filter
+        const teamObj = teams.find((t) => String(t._id) === String(selectedTeamId));
+        const capRef = teamObj?.captain;
+        let captainPlayer = null;
+
+        if (capRef) {
+          if (typeof capRef === "object" && capRef._id) {
+            captainPlayer = {
+              ...capRef,
+              isCaptain: true,
+              finalBidPrice: capRef.finalBidPrice ?? 0,
+            };
+          } else if (typeof capRef === "string") {
+            const inList = list.find((p) => String(p._id) === String(capRef));
+            if (inList) {
+              inList.isCaptain = true;
+            } else {
+              try {
+                const cRes = await fetch(`${API_URL}/api/v1/players/${capRef}`);
+                if (cRes.ok) {
+                  const cData = await cRes.json();
+                  const fetched = cData?.data?.player || cData?.data?.doc || cData?.body;
+                  if (fetched) {
+                    captainPlayer = {
+                      ...fetched,
+                      isCaptain: true,
+                      finalBidPrice: fetched.finalBidPrice ?? 0,
+                    };
+                  }
+                }
+              } catch (_) {}
+            }
+          }
+        }
+
+        if (captainPlayer && !list.some((p) => String(p._id) === String(captainPlayer._id))) {
+          list = [captainPlayer, ...list];
+        }
+
+        list = list.map((p) => {
+          const isCap = p.isCaptain || (capRef && String(p._id) === String(capRef?._id || capRef));
+          return isCap ? { ...p, isCaptain: true, finalBidPrice: p.finalBidPrice ?? 0 } : p;
+        });
+
+        list.sort((a, b) => (b.isCaptain ? 1 : 0) - (a.isCaptain ? 1 : 0));
+        setTeamPlayers(list);
       } catch (_) {
       } finally {
         setLoadingPlayers(false);
