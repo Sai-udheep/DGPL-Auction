@@ -11,14 +11,23 @@ import {
   Download,
   Copy,
   Check,
+  Link2,
+  RefreshCw,
+  ShieldCheck,
 } from "lucide-react";
 import { API_URL } from "../../config";
 import { useAuth } from "../../context/authContextCore";
 
 export default function CsvUploadModal({ isOpen, onClose, token: propToken, onUploadSuccess }) {
   const { token: authContextToken } = useAuth();
-  const token = propToken || authContextToken || (typeof localStorage !== "undefined" ? localStorage.getItem("auth_token") : null);
-  const [activeTab, setActiveTab] = useState("file"); // "file" | "paste"
+  const token =
+    propToken ||
+    authContextToken ||
+    (typeof localStorage !== "undefined" ? localStorage.getItem("auth_token") : null);
+
+  const [activeTab, setActiveTab] = useState("google_form"); // "google_form" | "file" | "paste"
+  const [googleSheetUrl, setGoogleSheetUrl] = useState("");
+  const [importAsUnapproved, setImportAsUnapproved] = useState(true);
   const [file, setFile] = useState(null);
   const [pastedText, setPastedText] = useState("");
   const [previewData, setPreviewData] = useState([]);
@@ -34,22 +43,7 @@ Rohit Sharma,Batsman,4,2.0,https://images.unsplash.com/photo-1500648767791-00dcc
 Virat Kohli,Batsman,4,2.0,https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80
 Jasprit Bumrah,Bowler,3,1.5,https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&auto=format&fit=crop&q=80
 Hardik Pandya,All-Rounder,3,1.5,https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=400&auto=format&fit=crop&q=80
-Rishabh Pant,Wicket-Keeper,2,1.0,https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=400&auto=format&fit=crop&q=80
-Suryakumar Yadav,Batsman,4,2.0,https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80
-Ravindra Jadeja,All-Rounder,4,2.0,https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=400&auto=format&fit=crop&q=80
-Shubman Gill,Batsman,2,1.0,https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=400&auto=format&fit=crop&q=80
-Mohammed Shami,Bowler,4,2.0,https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&auto=format&fit=crop&q=80
-KL Rahul,Wicket-Keeper,3,1.5,https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?w=400&auto=format&fit=crop&q=80
-Axar Patel,All-Rounder,3,1.5,https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&auto=format&fit=crop&q=80
-Kuldeep Yadav,Bowler,2,1.0,https://images.unsplash.com/photo-1463453091185-61582044d556?w=400&auto=format&fit=crop&q=80
-Ishan Kishan,Wicket-Keeper,2,1.0,https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=400&auto=format&fit=crop&q=80
-Yuzvendra Chahal,Bowler,3,1.5,https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&auto=format&fit=crop&q=80
-Sanju Samson,Wicket-Keeper,3,1.5,https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&auto=format&fit=crop&q=80
-Arshdeep Singh,Bowler,1,0.5,https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=400&auto=format&fit=crop&q=80
-Tilak Varma,Batsman,1,0.5,https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&auto=format&fit=crop&q=80
-Rinku Singh,Batsman,1,0.5,https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80
-Yashasvi Jaiswal,Batsman,1,0.5,https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&auto=format&fit=crop&q=80
-Washington Sundar,All-Rounder,2,1.0,https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=400&auto=format&fit=crop&q=80`;
+Rishabh Pant,Wicket-Keeper,2,1.0,https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=400&auto=format&fit=crop&q=80`;
 
   const getAutoBasePrice = (year) => {
     const y = parseInt(year, 10);
@@ -84,6 +78,44 @@ Washington Sundar,All-Rounder,2,1.0,https://images.unsplash.com/photo-1522075469
     if (s.includes("bat")) return "Batsman";
     if (s.includes("bowl")) return "Bowler";
     return "All-Rounder";
+  };
+
+  // Google Sheet / Google Forms Dynamic Sync Handler
+  const handleSyncGoogleSheet = async () => {
+    if (!googleSheetUrl || !googleSheetUrl.trim()) {
+      setError("Please paste a valid Google Sheet or CSV URL.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSuccessMsg(null);
+
+    try {
+      const res = await fetch(`${API_URL}/api/v1/players/sync-google-sheet`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          sheetUrl: googleSheetUrl.trim(),
+          asUnapproved: importAsUnapproved,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to sync from Google Sheet.");
+      }
+
+      setSuccessMsg(data.message || `Successfully synced ${data.count || 0} players!`);
+      if (onUploadSuccess) onUploadSuccess();
+    } catch (err) {
+      setError(err.message || "Error occurred while syncing from Google Sheet.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const parseInput = (rawText) => {
@@ -133,16 +165,16 @@ Washington Sundar,All-Rounder,2,1.0,https://images.unsplash.com/photo-1522075469
     }
 
     const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/['"]/g, ""));
-    const nameIdx = headers.findIndex((h) => h.includes("name") || h.includes("player"));
-    const catIdx = headers.findIndex((h) => h.includes("role") || h.includes("category") || h.includes("skill"));
-    const yearIdx = headers.findIndex((h) => h.includes("year") || h.includes("batch") || h.includes("academic"));
+    const nameIdx = headers.findIndex((h) => (h.includes("name") || h.includes("player")) && !h.includes("timestamp"));
+    const catIdx = headers.findIndex((h) => h.includes("role") || h.includes("category") || h.includes("skill") || h.includes("playing"));
+    const yearIdx = headers.findIndex((h) => h.includes("year") || h.includes("batch") || h.includes("academic") || h.includes("participation"));
     const priceIdx = headers.findIndex((h) => h.includes("price") || h.includes("base") || h.includes("points"));
     const imgIdx = headers.findIndex(
-      (h) => h.includes("photo") || h.includes("image") || h.includes("picture") || h.includes("link") || h.includes("url")
+      (h) => h.includes("photo") || h.includes("image") || h.includes("picture") || h.includes("link") || h.includes("url") || h.includes("upload")
     );
 
     if (nameIdx === -1) {
-      setError('Missing "name" header column in CSV.');
+      setError('Missing "Name" or "Full Name" header column in CSV.');
       setPreviewData([]);
       return;
     }
@@ -151,7 +183,6 @@ Washington Sundar,All-Rounder,2,1.0,https://images.unsplash.com/photo-1522075469
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
-      // Handle commas inside quotes or plain split
       const cells = line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
       const name = cells[nameIdx];
       if (!name) continue;
@@ -170,7 +201,11 @@ Washington Sundar,All-Rounder,2,1.0,https://images.unsplash.com/photo-1522075469
         if (!isNaN(pVal)) basePrice = pVal;
       }
 
-      const image = imgIdx >= 0 && cells[imgIdx] ? cells[imgIdx] : "";
+      let image = imgIdx >= 0 && cells[imgIdx] ? cells[imgIdx] : "";
+      const driveMatch = image.match(/\/d\/([a-zA-Z0-9_-]+)/) || image.match(/id=([a-zA-Z0-9_-]+)/);
+      if (driveMatch) {
+        image = `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
+      }
 
       parsed.push({
         name,
@@ -215,7 +250,7 @@ Washington Sundar,All-Rounder,2,1.0,https://images.unsplash.com/photo-1522075469
     setSuccessMsg(null);
 
     try {
-      const batchSize = 5;
+      const batchSize = 10;
       let createdCount = 0;
       let firstErrorMsg = null;
 
@@ -237,6 +272,7 @@ Washington Sundar,All-Rounder,2,1.0,https://images.unsplash.com/photo-1522075469
                 image: p.image || `https://via.placeholder.com/200x250?text=${encodeURIComponent(p.name)}`,
                 status: "unsold",
                 isCaptain: false,
+                isApproved: !importAsUnapproved,
               }),
             });
             if (!singleRes.ok) {
@@ -255,14 +291,18 @@ Washington Sundar,All-Rounder,2,1.0,https://images.unsplash.com/photo-1522075469
       }
 
       if (createdCount === 0) {
-        throw new Error(firstErrorMsg || "Failed to create players. Please check your admin login and CSV format.");
+        throw new Error(firstErrorMsg || "Failed to create players.");
       }
 
-      setSuccessMsg(`Successfully imported ${createdCount} of ${previewData.length} players!`);
-      setTimeout(() => {
-        if (onUploadSuccess) onUploadSuccess();
-        onClose();
-      }, 1200);
+      setSuccessMsg(
+        `Successfully imported ${createdCount} players ${
+          importAsUnapproved ? "into Unapproved Pool for review" : "directly into the tournament pool"
+        }!`
+      );
+      setPreviewData([]);
+      setFile(null);
+      setPastedText("");
+      if (onUploadSuccess) onUploadSuccess();
     } catch (err) {
       setError(err.message || "Error occurred while uploading");
     } finally {
@@ -271,212 +311,285 @@ Washington Sundar,All-Rounder,2,1.0,https://images.unsplash.com/photo-1522075469
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-5 overflow-y-auto">
-      <div className="glass-card max-w-2xl w-full p-5 sm:p-7 space-y-5 border-white/20 bg-[#0e121c]/95 shadow-2xl my-auto max-h-[92vh] overflow-y-auto custom-scroll relative">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/10 pb-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+      <div className="relative w-full max-w-2xl max-h-[90vh] bg-[#0c1017] border border-white/15 rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+        {/* Modal Header */}
+        <div className="p-4 sm:p-6 border-b border-white/10 flex items-center justify-between gap-4 bg-white/[0.02]">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+            <div className="w-10 h-10 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-300 shrink-0">
               <Upload className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-black text-white">Import Players</h3>
-              <p className="text-xs text-white/50">Upload CSV or JSON player list to populate tournament pool</p>
+              <h2 className="text-base sm:text-lg font-bold text-white tracking-wide">
+                Import Tournament Players
+              </h2>
+              <p className="text-xs text-white/50">
+                Sync live from Google Forms or upload CSV / JSON files
+              </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-xl text-white/40 hover:text-white hover:bg-white/[0.08] transition cursor-pointer"
+            className="text-white/40 hover:text-white transition p-2 rounded-xl hover:bg-white/10 cursor-pointer"
             type="button"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* CSV Format Specification Card */}
-        <div className="p-4 rounded-2xl bg-gradient-to-br from-cyan-500/[0.08] to-blue-500/[0.03] border border-cyan-500/25 space-y-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4 text-cyan-400" />
-              <span className="text-xs font-black uppercase tracking-wider text-cyan-300">
-                Required CSV Column Format
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleCopyTemplate}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-white/80 transition flex items-center gap-1 cursor-pointer"
-                type="button"
-              >
-                {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                <span>{copied ? "Copied!" : "Copy Format"}</span>
-              </button>
-              <button
-                onClick={handleDownloadTemplate}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 transition flex items-center gap-1 cursor-pointer"
-                type="button"
-              >
-                <Download className="w-3 h-3" />
-                <span>Template .csv</span>
-              </button>
+        {/* Unapproved Pool Protection Toggle (Universal) */}
+        <div className="mx-4 sm:mx-6 mt-4 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <ShieldCheck className="w-4 h-4 text-amber-300 shrink-0" />
+            <div>
+              <p className="text-xs font-bold text-amber-200">
+                Unapproved Pool (Gatekeeper)
+              </p>
+              <p className="text-[11px] text-white/50">
+                Hold imported players in Unapproved Queue until Admin reviews & approves them.
+              </p>
             </div>
           </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px]">
-            <div className="bg-black/30 p-2 rounded-xl border border-white/10">
-              <strong className="text-cyan-300 block">name</strong>
-              <span className="text-white/40 text-[10px]">Full Name *</span>
-            </div>
-            <div className="bg-black/30 p-2 rounded-xl border border-white/10">
-              <strong className="text-cyan-300 block">year</strong>
-              <span className="text-white/40 text-[10px]">1, 2, 3, or 4 *</span>
-            </div>
-            <div className="bg-black/30 p-2 rounded-xl border border-white/10">
-              <strong className="text-cyan-300 block">category</strong>
-              <span className="text-white/40 text-[10px]">Batsman / Bowler *</span>
-            </div>
-            <div className="bg-black/30 p-2 rounded-xl border border-white/10">
-              <strong className="text-white/70 block">image</strong>
-              <span className="text-white/40 text-[10px]">Photo URL (optional)</span>
-            </div>
-            <div className="bg-black/30 p-2 rounded-xl border border-white/10">
-              <strong className="text-white/70 block">basePrice</strong>
-              <span className="text-white/40 text-[10px]">Auto (optional)</span>
-            </div>
-          </div>
-
-          <p className="text-[10px] text-white/50">
-            * <em>basePrice</em> is automatically assigned based on year (1st=0.5, 2nd=1.0, 3rd=1.5, 4th=2.0 Pts) if left blank.
-          </p>
+          <label className="relative inline-flex items-center cursor-pointer shrink-0">
+            <input
+              type="checkbox"
+              checked={importAsUnapproved}
+              onChange={(e) => setImportAsUnapproved(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+          </label>
         </div>
 
-        {/* Input tabs */}
-        <div className="flex border-b border-white/10 gap-4">
+        {/* Tab Switcher */}
+        <div className="flex border-b border-white/10 px-4 sm:px-6 pt-3 gap-2">
           <button
+            onClick={() => {
+              setActiveTab("google_form");
+              setError(null);
+            }}
+            className={`pb-2.5 px-3 text-xs font-bold flex items-center gap-1.5 border-b-2 transition cursor-pointer ${
+              activeTab === "google_form"
+                ? "border-amber-400 text-amber-300"
+                : "border-transparent text-white/50 hover:text-white"
+            }`}
             type="button"
-            onClick={() => setActiveTab("file")}
-            className={`pb-2.5 text-xs font-bold flex items-center gap-1.5 cursor-pointer border-b-2 transition ${
+          >
+            <Link2 className="w-3.5 h-3.5" />
+            <span>Google Forms / Sheet</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab("file");
+              setError(null);
+            }}
+            className={`pb-2.5 px-3 text-xs font-bold flex items-center gap-1.5 border-b-2 transition cursor-pointer ${
               activeTab === "file"
                 ? "border-cyan-400 text-cyan-300"
-                : "border-transparent text-white/40 hover:text-white"
+                : "border-transparent text-white/50 hover:text-white"
             }`}
-          >
-            <FileText className="w-4 h-4" />
-            <span>Upload File (.csv / .json)</span>
-          </button>
-          <button
             type="button"
-            onClick={() => setActiveTab("paste")}
-            className={`pb-2.5 text-xs font-bold flex items-center gap-1.5 cursor-pointer border-b-2 transition ${
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Upload File (.csv)</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab("paste");
+              setError(null);
+            }}
+            className={`pb-2.5 px-3 text-xs font-bold flex items-center gap-1.5 border-b-2 transition cursor-pointer ${
               activeTab === "paste"
                 ? "border-cyan-400 text-cyan-300"
-                : "border-transparent text-white/40 hover:text-white"
+                : "border-transparent text-white/50 hover:text-white"
             }`}
+            type="button"
           >
-            <Code className="w-4 h-4" />
-            <span>Paste CSV or JSON</span>
+            <Code className="w-3.5 h-3.5" />
+            <span>Paste Data</span>
           </button>
         </div>
 
-        {/* Tab content */}
-        {activeTab === "file" ? (
-          <div className="space-y-3">
-            <label className="border-2 border-dashed border-white/15 hover:border-cyan-400/50 rounded-2xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer bg-white/[0.02] hover:bg-white/[0.04] transition group">
-              <Upload className="w-8 h-8 text-white/30 group-hover:text-cyan-400 transition" />
-              <span className="text-xs font-semibold text-white/80">
-                {file ? file.name : "Click or drag CSV or JSON file here"}
-              </span>
-              <span className="text-[11px] text-white/40">Supported extensions: .csv, .json</span>
-              <input
-                type="file"
-                accept=".csv, application/json, .json, text/csv"
-                onChange={handleFileChange}
-                className="hidden"
+        {/* Modal Body */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+          {/* TAB 1: GOOGLE FORM / SHEET SYNC */}
+          {activeTab === "google_form" && (
+            <div className="space-y-4">
+              <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 text-xs text-white/70 space-y-2">
+                <p className="font-bold text-white flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-300" />
+                  <span>How to dynamically load from Google Forms:</span>
+                </p>
+                <ol className="list-decimal list-inside space-y-1 text-white/60 text-[11px] leading-relaxed">
+                  <li>Open the Google Sheet linked to your Google Form registration.</li>
+                  <li>Click <strong>Share</strong> (top right) and set access to <strong>"Anyone with the link can view"</strong>.</li>
+                  <li>Copy the Google Sheet URL and paste it below.</li>
+                </ol>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-white/80 mb-1.5">
+                  Google Sheet URL or Published CSV Link
+                </label>
+                <div className="relative">
+                  <input
+                    type="url"
+                    value={googleSheetUrl}
+                    onChange={(e) => setGoogleSheetUrl(e.target.value)}
+                    placeholder="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs.../edit"
+                    className="w-full bg-white/[0.04] border border-white/10 rounded-2xl px-4 py-2.5 text-xs text-white placeholder-white/30 focus:outline-none focus:border-amber-400/50"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  onClick={handleSyncGoogleSheet}
+                  disabled={loading || !googleSheetUrl.trim()}
+                  className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-xs flex items-center gap-2 shadow-lg shadow-amber-500/20 disabled:opacity-40 cursor-pointer transition"
+                  type="button"
+                >
+                  <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+                  <span>{loading ? "Syncing..." : "⚡ Sync from Google Forms"}</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: FILE UPLOAD */}
+          {activeTab === "file" && (
+            <div className="space-y-4">
+              <label className="border-2 border-dashed border-white/15 hover:border-cyan-400/40 rounded-3xl p-6 flex flex-col items-center justify-center gap-2.5 cursor-pointer bg-white/[0.02] hover:bg-white/[0.04] transition group">
+                <Upload className="w-8 h-8 text-white/30 group-hover:text-cyan-400 transition" />
+                <span className="text-xs font-bold text-white group-hover:text-cyan-300 transition">
+                  {file ? file.name : "Select or Drop CSV / JSON File"}
+                </span>
+                <span className="text-[11px] text-white/40">
+                  Google Form responses CSV or standard player list
+                </span>
+                <input
+                  type="file"
+                  accept=".csv,.json,text/csv,application/json"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+              </label>
+
+              {/* Template Buttons */}
+              <div className="flex items-center justify-between text-xs text-white/50 pt-1">
+                <span>Need a reference template?</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleCopyTemplate}
+                    className="hover:text-cyan-300 flex items-center gap-1 cursor-pointer transition"
+                    type="button"
+                  >
+                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copied ? "Copied" : "Copy Template"}</span>
+                  </button>
+                  <span>•</span>
+                  <button
+                    onClick={handleDownloadTemplate}
+                    className="hover:text-cyan-300 flex items-center gap-1 cursor-pointer transition"
+                    type="button"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download CSV</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: PASTE DATA */}
+          {activeTab === "paste" && (
+            <div className="space-y-3">
+              <label className="block text-xs font-semibold text-white/80">
+                Paste CSV or JSON Rows
+              </label>
+              <textarea
+                rows={6}
+                value={pastedText}
+                onChange={handleTextChange}
+                placeholder="Paste CSV lines (e.g. Name, Category, Year) or JSON array..."
+                className="w-full bg-white/[0.04] border border-white/10 rounded-2xl p-3 text-xs text-white font-mono placeholder-white/30 focus:outline-none focus:border-cyan-400/50"
               />
-            </label>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <textarea
-              rows={6}
-              value={pastedText}
-              onChange={handleTextChange}
-              placeholder="Paste raw CSV lines (e.g. name,year,category,image,basePrice)..."
-              className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-white placeholder-white/20 focus:outline-none focus:border-cyan-400 font-mono custom-scroll"
-            />
-          </div>
-        )}
-
-        {/* Preview Section */}
-        {previewData.length > 0 && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-white flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                Parsed {previewData.length} Players:
-              </span>
-              <span className="text-white/40 text-[11px]">Ready to import</span>
             </div>
-            <div className="max-h-48 overflow-y-auto custom-scroll border border-white/10 rounded-xl bg-black/30">
-              <table className="w-full text-left border-collapse text-[11px]">
-                <thead className="sticky top-0 bg-[#0e121c] border-b border-white/10 text-white/40 font-bold uppercase">
-                  <tr>
-                    <th className="p-2">Name</th>
-                    <th className="p-2">Category</th>
-                    <th className="p-2">Year</th>
-                    <th className="p-2">Base Pts</th>
-                    <th className="p-2">Photo</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5 text-white/70">
-                  {previewData.map((p, idx) => (
-                    <tr key={idx} className="hover:bg-white/[0.02]">
-                      <td className="p-2 font-semibold text-white">{p.name}</td>
-                      <td className="p-2">{p.category}</td>
-                      <td className="p-2">Year {p.year}</td>
-                      <td className="p-2 text-emerald-400 font-bold">{p.basePrice} Pts</td>
-                      <td className="p-2">
-                        {p.image ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-cyan-400 truncate max-w-[120px]">
-                            <ImageIcon className="w-3 h-3 shrink-0" /> Link
-                          </span>
-                        ) : (
-                          <span className="text-white/30 text-[10px]">None</span>
-                        )}
-                      </td>
+          )}
+
+          {/* Messages */}
+          {error && (
+            <div className="p-3.5 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-200 text-xs font-semibold flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {successMsg && (
+            <div className="p-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 text-xs font-semibold flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{successMsg}</span>
+            </div>
+          )}
+
+          {/* Preview Table */}
+          {previewData.length > 0 && (
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center justify-between text-xs text-white/70">
+                <span className="font-bold">Parsed Preview ({previewData.length} Players)</span>
+                <span className="text-[11px] text-white/40">Auto base price applied</span>
+              </div>
+              <div className="max-h-48 overflow-y-auto rounded-2xl border border-white/10 bg-black/40">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-white/[0.05] text-white/60 sticky top-0 border-b border-white/10">
+                    <tr>
+                      <th className="p-2.5">Player</th>
+                      <th className="p-2.5">Category</th>
+                      <th className="p-2.5">Year</th>
+                      <th className="p-2.5">Base Price</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-white/5 text-white/80">
+                    {previewData.slice(0, 15).map((p, idx) => (
+                      <tr key={idx} className="hover:bg-white/[0.02]">
+                        <td className="p-2.5 font-medium flex items-center gap-2 truncate max-w-[150px]">
+                          {p.image ? (
+                            <img
+                              src={p.image}
+                              alt=""
+                              className="w-5 h-5 rounded-full object-cover shrink-0"
+                              onError={(e) => (e.target.style.display = "none")}
+                            />
+                          ) : (
+                            <ImageIcon className="w-3.5 h-3.5 text-white/30 shrink-0" />
+                          )}
+                          <span className="truncate">{p.name}</span>
+                        </td>
+                        <td className="p-2.5">{p.category}</td>
+                        <td className="p-2.5">Year {p.year}</td>
+                        <td className="p-2.5 font-bold text-amber-300">{p.basePrice} Pts</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {previewData.length > 15 && (
+                <p className="text-[10px] text-white/40 text-center">
+                  + {previewData.length - 15} more rows...
+                </p>
+              )}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Error / Success Feedback */}
-        {error && (
-          <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {successMsg && (
-          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span>{successMsg}</span>
-          </div>
-        )}
-
-        {/* Footer actions */}
-        <div className="flex items-center justify-between pt-2 border-t border-white/10">
-          <div className="text-[11px] text-white/40">
-            {previewData.length > 0 ? `${previewData.length} players ready` : "No file parsed"}
-          </div>
-          <div className="flex items-center gap-3">
+        {/* Modal Footer */}
+        {activeTab !== "google_form" && (
+          <div className="p-4 sm:p-6 border-t border-white/10 flex items-center justify-between gap-3 bg-white/[0.02]">
             <button
               onClick={onClose}
-              disabled={loading}
-              className="px-4 py-2 text-xs font-bold text-white/60 hover:text-white bg-white/[0.05] hover:bg-white/[0.1] rounded-xl transition cursor-pointer"
+              className="px-4 py-2 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] text-xs font-semibold text-white/70 hover:text-white transition cursor-pointer"
               type="button"
             >
               Cancel
@@ -484,17 +597,13 @@ Washington Sundar,All-Rounder,2,1.0,https://images.unsplash.com/photo-1522075469
             <button
               onClick={handleUpload}
               disabled={loading || previewData.length === 0}
-              className={`px-5 py-2 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-2 ${
-                loading || previewData.length === 0
-                  ? "bg-white/[0.05] text-white/30 cursor-not-allowed"
-                  : "bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black shadow-lg shadow-cyan-500/20"
-              }`}
+              className="px-6 py-2 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-bold transition shadow-lg shadow-cyan-500/20 disabled:opacity-40 cursor-pointer"
               type="button"
             >
-              {loading ? "Importing..." : `Import ${previewData.length} Players`}
+              {loading ? "Uploading..." : `Import ${previewData.length} Players`}
             </button>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
