@@ -26,11 +26,27 @@ export default function CsvUploadModal({ isOpen, onClose, token, onUploadSuccess
 
   if (!isOpen) return null;
 
-  const sampleCsv = `name,year,category,image,basePrice
-Rohit Sharma,4,Batsman,https://res.cloudinary.com/demo/image/upload/sample.jpg,2.0
-Jasprit Bumrah,3,Bowler,,1.5
-Hardik Pandya,2,All-Rounder,,1.0
-Rishabh Pant,1,Wicket-Keeper,,0.5`;
+  const sampleCsv = `name,category,year,basePrice,image
+Rohit Sharma,Batsman,4,2.0,https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&auto=format&fit=crop&q=80
+Virat Kohli,Batsman,4,2.0,https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80
+Jasprit Bumrah,Bowler,3,1.5,https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&auto=format&fit=crop&q=80
+Hardik Pandya,All-Rounder,3,1.5,https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=400&auto=format&fit=crop&q=80
+Rishabh Pant,Wicket-Keeper,2,1.0,https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=400&auto=format&fit=crop&q=80
+Suryakumar Yadav,Batsman,4,2.0,https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80
+Ravindra Jadeja,All-Rounder,4,2.0,https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=400&auto=format&fit=crop&q=80
+Shubman Gill,Batsman,2,1.0,https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=400&auto=format&fit=crop&q=80
+Mohammed Shami,Bowler,4,2.0,https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&auto=format&fit=crop&q=80
+KL Rahul,Wicket-Keeper,3,1.5,https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?w=400&auto=format&fit=crop&q=80
+Axar Patel,All-Rounder,3,1.5,https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&auto=format&fit=crop&q=80
+Kuldeep Yadav,Bowler,2,1.0,https://images.unsplash.com/photo-1463453091185-61582044d556?w=400&auto=format&fit=crop&q=80
+Ishan Kishan,Wicket-Keeper,2,1.0,https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=400&auto=format&fit=crop&q=80
+Yuzvendra Chahal,Bowler,3,1.5,https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&auto=format&fit=crop&q=80
+Sanju Samson,Wicket-Keeper,3,1.5,https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&auto=format&fit=crop&q=80
+Arshdeep Singh,Bowler,1,0.5,https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=400&auto=format&fit=crop&q=80
+Tilak Varma,Batsman,1,0.5,https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&auto=format&fit=crop&q=80
+Rinku Singh,Batsman,1,0.5,https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80
+Yashasvi Jaiswal,Batsman,1,0.5,https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&auto=format&fit=crop&q=80
+Washington Sundar,All-Rounder,2,1.0,https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=400&auto=format&fit=crop&q=80`;
 
   const getAutoBasePrice = (year) => {
     const y = parseInt(year, 10);
