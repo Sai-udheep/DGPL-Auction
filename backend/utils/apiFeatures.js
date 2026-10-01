@@ -11,7 +11,7 @@ class APIfeature {
     //console.log(req.query);
     // Build the query.. you can just pass the object with required fields , you will get answer..
     const queryObj = { ...this.queryString }; // here we are deep copying an object , so that org dont change
-    const excludedFields = ['sort', 'limit', 'page', 'fields'];
+    const excludedFields = ['sort', 'limit', 'page', 'fields', 'includeCaptains'];
     excludedFields.forEach((el) => delete queryObj[el]);
     // Advance Filtering adding gt lt operators..
     // we need to convert this into JSON file to replace th gt with $gt

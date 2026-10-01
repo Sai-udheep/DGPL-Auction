@@ -208,7 +208,7 @@ export default function CaptainsModal({ isOpen, onClose, onCaptainsUpdated }) {
                 </span>
               </div>
               <p className="text-xs text-white/50 mt-0.5">
-                Select a captain for each of the 4 teams. Captains are automatically retained in their team roster at 0 cost.
+                Select a captain for each of the 4 teams. Captains must be 3rd Year students and are automatically retained in their team roster at 0 cost.
               </p>
             </div>
           </div>
@@ -252,12 +252,16 @@ export default function CaptainsModal({ isOpen, onClose, onCaptainsUpdated }) {
               const isSaving = savingTeamId === t._id;
               const searchQuery = searchQueries[t._id] || "";
 
-              // Eligible players: players not captain of ANOTHER team
+              // Eligible players: STRICTLY 3rd Year students, and not captain of ANOTHER team
               const otherCaptainsIds = teams
                 .filter((other) => String(other._id) !== String(t._id))
                 .map((other) => String(other.captain?._id || other.captain || ""));
 
               const eligiblePlayers = allPlayers.filter((p) => {
+                // Must be 3rd year
+                const playerYear = parseInt(p.year, 10);
+                if (playerYear !== 3) return false;
+
                 const isOtherCap = otherCaptainsIds.includes(String(p._id));
                 if (isOtherCap) return false;
                 if (!searchQuery.trim()) return true;
@@ -267,6 +271,7 @@ export default function CaptainsModal({ isOpen, onClose, onCaptainsUpdated }) {
                 );
               });
 
+              const totalThirdYear = allPlayers.filter((p) => parseInt(p.year, 10) === 3).length;
               const isChanged = String(selectedId) !== String(currentCap?._id || currentCap);
 
               return (
@@ -324,9 +329,9 @@ export default function CaptainsModal({ isOpen, onClose, onCaptainsUpdated }) {
                   {/* Select New Captain */}
                   <div className="space-y-2">
                     <label className="text-[11px] font-bold text-white/70 flex items-center justify-between">
-                      <span>Choose Captain from Player Pool</span>
-                      <span className="text-[10px] text-white/40 font-normal">
-                        ({allPlayers.length} total players)
+                      <span>Choose Captain (3rd Year Students Only)</span>
+                      <span className="text-[10px] text-amber-300 font-semibold">
+                        ({eligiblePlayers.length} eligible / {totalThirdYear} total 3rd years)
                       </span>
                     </label>
 
@@ -358,7 +363,7 @@ export default function CaptainsModal({ isOpen, onClose, onCaptainsUpdated }) {
                       }
                       className="w-full bg-[#121724] border border-white/15 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400/60 cursor-pointer"
                     >
-                      <option value="">-- Select Captain --</option>
+                      <option value="">-- Select 3rd Year Captain --</option>
                       {eligiblePlayers.map((p) => {
                         const isCurrent = String(p._id) === String(currentCap?._id || currentCap);
                         return (
@@ -406,7 +411,7 @@ export default function CaptainsModal({ isOpen, onClose, onCaptainsUpdated }) {
 
         {/* Footer */}
         <div className="pt-3 border-t border-white/10 flex items-center justify-between text-xs text-white/40">
-          <p>Retained captains are automatically sold to their team at 0 cost and will not enter bidding.</p>
+          <p>Tournament Rule: Only 3rd Year players are eligible to captain teams. Captains are retained at 0 cost.</p>
           <button
             onClick={onClose}
             className="px-5 py-2 text-xs font-bold text-white/80 hover:text-white bg-white/[0.06] hover:bg-white/[0.12] rounded-xl transition cursor-pointer"
