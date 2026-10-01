@@ -88,6 +88,8 @@ export default function AdminPage() {
     }
   }, [selectedYear]);
 
+  const fetchInitialData = fetchPlayers;
+
   // Fetch initial auction status (includes currentPlayerId)
   useEffect(() => {
     let ignore = false;
