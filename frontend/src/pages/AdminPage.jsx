@@ -796,6 +796,7 @@ export default function AdminPage() {
           }
           onSellPlayer={handleSellPlayer}
           onMarkUnsold={handleMarkUnsold}
+          onCancelPlayer={handleCancelPlayer}
           actionLoadingId={actionLoadingId}
         />
       )}

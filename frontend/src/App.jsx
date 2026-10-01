@@ -150,6 +150,26 @@ function App() {
       }, 5000);
     };
 
+        const handlePlayerWithdrawn = () => {
+      setCurrentPlayer(null);
+      setIsAuctionActive(false);
+      setRecentlySold(null);
+      setRecentlyUnsold(null);
+      const id = Date.now();
+      setToasts((prev) => [
+        ...prev,
+        { id, message: "Player has been safely returned to the pool.", type: "info" },
+      ]);
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 5000);
+    };
+
+    const handleTournamentInfoChanged = (payload) => {
+      if (payload?.tournamentTitle) setTournamentTitle(payload.tournamentTitle);
+      if (payload?.tournamentMode) setTournamentMode(payload.tournamentMode);
+    };
+
     socket.on("new_player", handleNewPlayer);
     socket.on("server:new_bid", handleNewBid);
     socket.on("player_sold", handlePlayerSold);
