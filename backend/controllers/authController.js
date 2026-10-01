@@ -38,8 +38,11 @@ exports.protect = catchAsync(async (req, res, next) => {
   ) {
     return next(new AppError('Please sign in to get access', 401));
   }
-  // verifry the authenication
+  // verify the authentication
   const token = req.headers.authorization.split(' ')[1];
+  if (!token || token === 'undefined' || token === 'null') {
+    return next(new AppError('Please sign in to get access', 401));
+  }
   const payLoad = jwt.verify(token, process.env.JWT_SECRET);
   // Verify token issued time against global invalidation timestamp
   const cfg = await AppConfig.findOne();

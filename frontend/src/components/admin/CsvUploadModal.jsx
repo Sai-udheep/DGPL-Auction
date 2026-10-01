@@ -13,8 +13,11 @@ import {
   Check,
 } from "lucide-react";
 import { API_URL } from "../../config";
+import { useAuth } from "../../context/authContextCore";
 
-export default function CsvUploadModal({ isOpen, onClose, token, onUploadSuccess }) {
+export default function CsvUploadModal({ isOpen, onClose, token: propToken, onUploadSuccess }) {
+  const { token: authContextToken } = useAuth();
+  const token = propToken || authContextToken || (typeof localStorage !== "undefined" ? localStorage.getItem("auth_token") : null);
   const [activeTab, setActiveTab] = useState("file"); // "file" | "paste"
   const [file, setFile] = useState(null);
   const [pastedText, setPastedText] = useState("");
@@ -224,7 +227,7 @@ Washington Sundar,All-Rounder,2,1.0,https://images.unsplash.com/photo-1522075469
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
               },
               body: JSON.stringify({
                 name: p.name.trim(),

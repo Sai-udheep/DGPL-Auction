@@ -1222,12 +1222,7 @@ export default function AdminPage() {
         onCaptainsUpdated={handleCaptainAssigned}
       />
 
-      {/* CSV Upload Modal */}
-      <CsvUploadModal
-        isOpen={isUploadModalOpen}
-        onClose={() => setIsUploadModalOpen(false)}
-        onUploadSuccess={fetchPlayers}
-      />
+
 
       {/* Random Draw Modal */}
       <RandomDrawModal
