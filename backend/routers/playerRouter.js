@@ -29,6 +29,40 @@ router
     playerController.uploadPlayers
   );
 
+// Dynamic Google Forms / Sheets sync
+router
+  .route('/sync-google-sheet')
+  .post(
+    authController.protect,
+    authController.restrictTo('admin'),
+    playerController.syncGoogleSheet
+  );
+
+// Bulk unapproved management (MUST be before /:id)
+router
+  .route('/approve-all')
+  .patch(
+    authController.protect,
+    authController.restrictTo('admin'),
+    playerController.approveAllPlayers
+  );
+
+router
+  .route('/unapproved')
+  .delete(
+    authController.protect,
+    authController.restrictTo('admin'),
+    playerController.rejectAllUnapprovedPlayers
+  );
+
+router
+  .route('/:id/approve')
+  .patch(
+    authController.protect,
+    authController.restrictTo('admin'),
+    playerController.approvePlayer
+  );
+
 router
   .route('/:id')
   .get(playerController.getPlayer)

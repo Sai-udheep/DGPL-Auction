@@ -10,6 +10,10 @@ const playerSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  isApproved: {
+    type: Boolean,
+    default: true,
+  },
   year: {
     type: Number,
   },
@@ -111,6 +115,7 @@ playerSchema.pre('validate', function (next) {
 // Index to optimize queries filtering by status (e.g., unsold/in_auction)
 playerSchema.index({ status: 1 });
 playerSchema.index({ markedUnsold: 1 });
+playerSchema.index({ isApproved: 1 });
 
 const Player = mongoose.model('Player', playerSchema);
 module.exports = Player;

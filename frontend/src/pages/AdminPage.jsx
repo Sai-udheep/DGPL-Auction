@@ -6,6 +6,7 @@ import CaptainsModal from "../components/admin/CaptainsModal";
 import RandomDrawModal from "../components/admin/RandomDrawModal";
 import AdminLiveStage from "../components/admin/AdminLiveStage";
 import AdminTeamsModal from "../components/admin/AdminTeamsModal";
+import UnapprovedPoolModal from "../components/admin/UnapprovedPoolModal";
 import { API_URL } from "../config";
 import { useAuth } from "../context/authContextCore";
 import { useSocket } from "../context/useSocket";
@@ -25,6 +26,7 @@ import {
   UserCheck,
   Download,
   Shield,
+  ShieldCheck,
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -57,6 +59,8 @@ export default function AdminPage() {
   const [drawnPlayer, setDrawnPlayer] = useState(null);
   const [liveStagePlayer, setLiveStagePlayer] = useState(null);
   const [isTeamsModalOpen, setIsTeamsModalOpen] = useState(false);
+  const [isUnapprovedModalOpen, setIsUnapprovedModalOpen] = useState(false);
+  const [unapprovedCount, setUnapprovedCount] = useState(0);
   const [exporting, setExporting] = useState(false);
 
   // Descending academic years (4th to 1st)
@@ -89,6 +93,16 @@ export default function AdminPage() {
     }
   }, [selectedYear]);
 
+  const fetchUnapprovedCount = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/players?isApproved=false&limit=1000`);
+      if (res.ok) {
+        const data = await res.json();
+        setUnapprovedCount(data?.data?.players?.length || 0);
+      }
+    } catch (_) {}
+  }, []);
+
   const fetchInitialData = fetchPlayers;
 
   // Fetch initial auction status (checks current active player)
@@ -111,6 +125,7 @@ export default function AdminPage() {
       }
     };
     fetchStatus();
+    fetchUnapprovedCount();
     return () => {
       ignore = true;
     };
@@ -226,6 +241,12 @@ export default function AdminPage() {
     socket.on("server:player_unsold", handlePlayerUnsold);
     socket.on("player_unsold", handlePlayerUnsold);
 
+    const handlePlayersUpdated = () => {
+      fetchPlayers();
+      fetchUnapprovedCount();
+    };
+    socket.on("server:players_updated", handlePlayersUpdated);
+
     return () => {
       socket.off("server:auction_status_changed", handleStatusChanged);
       socket.off("server:auction_reset", handleReset);
@@ -235,6 +256,7 @@ export default function AdminPage() {
       socket.off("player_sold", handlePlayerSold);
       socket.off("server:player_unsold", handlePlayerUnsold);
       socket.off("player_unsold", handlePlayerUnsold);
+      socket.off("server:players_updated", handlePlayersUpdated);
     };
   }, [socket, isConnected, fetchPlayers]);
 
@@ -940,6 +962,25 @@ export default function AdminPage() {
           </button>
 
           <button
+            onClick={() => setIsUnapprovedModalOpen(true)}
+            className={`glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-sm transition ${
+              unapprovedCount > 0
+                ? "bg-amber-500/20 text-amber-200 border-amber-500/40 hover:bg-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.2)] animate-pulse"
+                : "text-white/90 bg-white/[0.05] hover:bg-white/[0.10] border-white/10 hover:border-white/20"
+            }`}
+            type="button"
+            title="Review and approve Google Form submissions"
+          >
+            <ShieldCheck className={`w-3.5 h-3.5 ${unapprovedCount > 0 ? "text-amber-300" : "text-white/70"} shrink-0`} />
+            <span>Unapproved Pool</span>
+            {unapprovedCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-amber-400 text-black text-[10px] font-black shrink-0">
+                {unapprovedCount}
+              </span>
+            )}
+          </button>
+
+          <button
             onClick={() => setIsCaptainsModalOpen(true)}
             className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-semibold text-white/90 bg-white/[0.05] hover:bg-white/[0.10] border-white/10 hover:border-white/20 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-sm transition"
             type="button"
@@ -967,7 +1008,7 @@ export default function AdminPage() {
             title="Upload players via CSV spreadsheet"
           >
             <Download className="w-3.5 h-3.5 text-white/70 shrink-0" />
-            <span>Upload Players</span>
+            <span>Import Players / Forms</span>
           </button>
 
           
@@ -1183,12 +1224,26 @@ export default function AdminPage() {
         </>
       )}
 
-      {/* CSV / JSON Upload Modal */}
+      {/* CSV / JSON / Google Forms Upload Modal */}
       <CsvUploadModal
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         token={token}
-        onUploadSuccess={fetchPlayers}
+        onUploadSuccess={() => {
+          fetchPlayers();
+          fetchUnapprovedCount();
+        }}
+      />
+
+      {/* Unapproved Players Review Modal */}
+      <UnapprovedPoolModal
+        isOpen={isUnapprovedModalOpen}
+        onClose={() => setIsUnapprovedModalOpen(false)}
+        token={token}
+        onPlayerApproved={() => {
+          fetchPlayers();
+          fetchUnapprovedCount();
+        }}
       />
 
       {/* Reset Confirmation Modal */}
