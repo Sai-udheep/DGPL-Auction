@@ -50,11 +50,4 @@ router.post(
   auctionController.cancelCurrentPlayer
 );
 
-router.patch(
-  '/tournament-info',
-  authController.protect,
-  authController.restrictTo('admin'),
-  auctionController.updateTournamentInfo
-);
-
 module.exports = router;
