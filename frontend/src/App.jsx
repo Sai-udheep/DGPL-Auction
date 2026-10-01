@@ -13,6 +13,7 @@ import { useSocket } from "./context/useSocket";
 import { useAuth } from "./context/authContextCore";
 import Toast from "./components/Toast";
 import { API_URL } from "./config";
+import { playAuctionCallSound, playSoldSound } from "./utils/auctionSound";
 
 function App() {
   const [activeTab, setActiveTab] = useState("live");
@@ -22,6 +23,7 @@ function App() {
   const [recentlySold, setRecentlySold] = useState(null);
   const [recentlyUnsold, setRecentlyUnsold] = useState(null);
   const [toasts, setToasts] = useState([]);
+  const [activeAuctionCall, setActiveAuctionCall] = useState(null); // { callNumber, callText, playerName }
 
   const { socket, isConnected } = useSocket();
   const { isAuthenticated, user } = useAuth();
@@ -34,6 +36,7 @@ function App() {
       setRecentlySold(null);
       setRecentlyUnsold(null);
       setCurrentPlayer(player);
+      setActiveAuctionCall(null);
       setIsAuctionActive(true);
     };
 
@@ -85,6 +88,9 @@ function App() {
           until: Date.now() + 10000,
         });
         setCurrentPlayer(null);
+        setActiveAuctionCall(null);
+        const isCaptain = user?.role === "captain" || Boolean(user?.team);
+        if (isCaptain) playSoldSound();
         setTimeout(() => {
           setRecentlySold((prev) => (prev && Date.now() > prev.until ? null : prev));
         }, 10500);
@@ -148,7 +154,26 @@ function App() {
       }, 5000);
     };
 
-        const handlePlayerWithdrawn = () => {
+        const handleAuctionCall = (payload) => {
+      setActiveAuctionCall(payload);
+      const isCaptain = user?.role === "captain" || Boolean(user?.team);
+      if (isCaptain && payload?.callNumber) {
+        playAuctionCallSound(payload.callNumber);
+      }
+      const callLabels = { 1: "Going Once...", 2: "Going Twice...", 3: "FINAL CALL!" };
+      const label = callLabels[payload?.callNumber] || payload?.callText || "Auction Call";
+      setToasts((prev) => [
+        ...prev,
+        {
+          id: Date.now() + Math.random(),
+          message: `📢 ${payload?.playerName ? payload.playerName + ": " : ""}${label}`,
+          type: payload?.callNumber === 3 ? "error" : "info",
+        },
+      ]);
+    };
+
+    const handlePlayerWithdrawn = () => {
+      setActiveAuctionCall(null);
       setCurrentPlayer(null);
       setRecentlySold(null);
       setRecentlyUnsold(null);
@@ -172,6 +197,7 @@ function App() {
     socket.on("server:auction_status_changed", handleAuctionStatusChanged);
     socket.on("server:auction_reset", handleAuctionReset);
     socket.on("server:player_withdrawn", handlePlayerWithdrawn);
+    socket.on("server:auction_call", handleAuctionCall);
     
     return () => {
       socket.off("new_player", handleNewPlayer);
@@ -184,6 +210,7 @@ function App() {
       socket.off("server:auction_status_changed", handleAuctionStatusChanged);
       socket.off("server:auction_reset", handleAuctionReset);
       socket.off("server:player_withdrawn", handlePlayerWithdrawn);
+      socket.off("server:auction_call", handleAuctionCall);
           };
   }, [socket, isConnected]);
 
@@ -285,6 +312,7 @@ function App() {
                           player={currentPlayer || null}
                           isAuctionActive={isAuctionActive}
                           teams={teams}
+                activeAuctionCall={activeAuctionCall}
                         />
                       )}
                     </div>

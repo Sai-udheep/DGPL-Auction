@@ -3,7 +3,7 @@ import { useAuth } from "../context/authContextCore";
 import { useSocket } from "../context/useSocket";
 import { formatAcademicYear } from "../utils/formatters";
 import CurrentPlayerSkeleton from "./CurrentPlayerSkeleton";
-import { Clock, Radio, Sparkles, ShieldAlert, User } from "lucide-react";
+import { Clock, Radio, Sparkles, ShieldAlert, User, Megaphone, AlertCircle } from "lucide-react";
 
 const BidErrorListener = ({ socket }) => {
   React.useEffect(() => {
@@ -17,7 +17,7 @@ const BidErrorListener = ({ socket }) => {
   return null;
 };
 
-const CurrentPlayer = ({ player: livePlayer, isAuctionActive = false, teams = [] }) => {
+const CurrentPlayer = ({ player: livePlayer, isAuctionActive = false, teams = [], activeAuctionCall = null }) => {
   const { isAuthenticated, user } = useAuth();
   const { socket } = useSocket() || {};
   const [loading, setLoading] = useState(!livePlayer && isAuctionActive);
