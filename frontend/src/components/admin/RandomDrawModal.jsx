@@ -93,7 +93,7 @@ export default function RandomDrawModal({
           <button
             onClick={() => onStartAuction && onStartAuction(player._id)}
             disabled={isStarting}
-            className="w-full py-3 px-4 rounded-xl text-sm font-black text-slate-950 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-300 hover:brightness-110 shadow-lg shadow-orange-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer focus:outline-none"
+            className="w-full py-3 px-4 rounded-xl text-sm font-black text-slate-950 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer focus:outline-none"
             type="button"
           >
             <Play className="w-4 h-4 fill-slate-950" />
