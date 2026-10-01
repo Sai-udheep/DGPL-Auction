@@ -394,8 +394,86 @@ exports.uploadPlayers = catchAsync(async (req, res, next) => {
     } else {
       const lines = trimmed.split(/\r?\n/).filter((l) => l.trim().length > 0);
       if (lines.length < 2) {
-        return next(new AppError('CSV must include header row and at least 1 player.', 400));
+        return next(new AppError('Data must include header row and at least 1 player.', 400));
       }
+
+      // Check for vertical Google Forms copy-paste (1 field per line)
+      let isVerticalHeaders = false;
+      let numVerticalHeaders = 0;
+      for (let i = 0; i < Math.min(15, lines.length); i++) {
+        const l = lines[i];
+        if (/\d{1,2}\/\d{1,2}\/\d{2,4}/.test(l) || (l.includes('@') && !l.toLowerCase().includes('address'))) {
+          numVerticalHeaders = i;
+          isVerticalHeaders = true;
+          break;
+        }
+      }
+
+      if (isVerticalHeaders && numVerticalHeaders >= 3) {
+        const headerNames = lines.slice(0, numVerticalHeaders).map((h) => h.toLowerCase());
+        const dataLines = lines.slice(numVerticalHeaders);
+
+        for (let i = 0; i < dataLines.length; i += numVerticalHeaders) {
+          const chunk = dataLines.slice(i, i + numVerticalHeaders);
+          if (chunk.length < 3) continue;
+
+          const entry = {};
+          for (let j = 0; j < Math.min(headerNames.length, chunk.length); j++) {
+            entry[headerNames[j]] = chunk[j];
+          }
+
+          const nameKey = Object.keys(entry).find(
+            (k) => (k.includes('name') || k.includes('player')) && !k.includes('timestamp')
+          );
+          const name = nameKey ? entry[nameKey].trim() : '';
+          if (!name) continue;
+
+          const roleKey = Object.keys(entry).find((k) =>
+            k.includes('role') || k.includes('category') || k.includes('skill') || k.includes('playing')
+          );
+          let rawRole = (roleKey ? entry[roleKey] : 'All-Rounder').toLowerCase();
+          let category = 'All-Rounder';
+          if (rawRole.includes('bat')) category = 'Batsman';
+          else if (rawRole.includes('bowl')) category = 'Bowler';
+          else if (rawRole.includes('keep') || rawRole.includes('wk') || rawRole.includes('wicket')) category = 'Wicket-Keeper';
+
+          const yearKey = Object.keys(entry).find((k) =>
+            k.includes('year') || k.includes('academic') || k.includes('batch') || k.includes('participation')
+          );
+          let year = 1;
+          if (yearKey && entry[yearKey]) {
+            const yMatch = entry[yearKey].match(/\d+/);
+            if (yMatch) year = parseInt(yMatch[0], 10);
+          }
+          const basePrice = getAutoBasePrice(year);
+
+          const photoKey = Object.keys(entry).find((k) =>
+            k.includes('photo') || k.includes('image') || k.includes('picture') || k.includes('upload') || k.includes('link') || k.includes('url')
+          );
+          let image = photoKey ? entry[photoKey] : '';
+          const urlMatch = image.match(/https?:\/\/[^\s\)\]]+/);
+          if (urlMatch) image = urlMatch[0];
+          const driveMatch = image.match(/\/d\/([a-zA-Z0-9_-]+)/) || image.match(/id=([a-zA-Z0-9_-]+)/);
+          if (driveMatch) {
+            image = `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
+          }
+          if (!image) {
+            image = `https://via.placeholder.com/200x250?text=${encodeURIComponent(name)}`;
+          }
+
+          playersToInsert.push({
+            name,
+            category,
+            year,
+            basePrice,
+            image,
+            status: 'unsold',
+            isCaptain: false,
+            isApproved: asUnapproved ? false : true,
+            bidHistory: [],
+          });
+        }
+      } else {
 
       const headers = lines[0].split(',').map((h) => h.trim().toLowerCase().replace(/['"]/g, ''));
       const nameIdx = headers.findIndex((h) => (h.includes('name') || h.includes('player')) && !h.includes('timestamp'));
@@ -457,6 +535,7 @@ exports.uploadPlayers = catchAsync(async (req, res, next) => {
           isApproved: asUnapproved ? false : true,
           bidHistory: [],
         });
+      }
       }
     }
   }
