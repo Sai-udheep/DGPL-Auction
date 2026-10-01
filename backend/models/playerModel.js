@@ -1,4 +1,4 @@
-﻿const mongoose = require('mongoose');
+const mongoose = require('mongoose');
 
 const playerSchema = new mongoose.Schema({
   name: {
@@ -72,6 +72,40 @@ const playerSchema = new mongoose.Schema({
       },
     },
   ],
+});
+
+// Pre-validation hook to normalize category and ensure valid basePrice
+playerSchema.pre('validate', function (next) {
+  if (this.category) {
+    const s = String(this.category).trim().toLowerCase();
+    if (s.includes('wk') || s.includes('keep') || s.includes('wicket')) {
+      this.category = 'Wicket-Keeper';
+    } else if (s.includes('bat')) {
+      this.category = 'Batsman';
+    } else if (s.includes('bowl')) {
+      this.category = 'Bowler';
+    } else {
+      this.category = 'All-Rounder';
+    }
+  } else {
+    this.category = 'All-Rounder';
+  }
+
+  // Ensure year is 1, 2, 3, or 4
+  if (this.year != null) {
+    const y = parseInt(this.year, 10);
+    this.year = isNaN(y) ? 1 : Math.max(1, Math.min(4, y));
+  }
+
+  // Auto-fill basePrice if missing or captain
+  if (this.isCaptain) {
+    this.basePrice = 0;
+  } else if (this.basePrice == null || isNaN(this.basePrice)) {
+    const y = this.year || 1;
+    this.basePrice = y === 1 ? 0.5 : y === 2 ? 1.0 : y === 3 ? 1.5 : 2.0;
+  }
+
+  next();
 });
 
 // Index to optimize queries filtering by status (e.g., unsold/in_auction)
