@@ -372,13 +372,20 @@ io.on('connection', (socket) => {
 setInterval(async () => {
   try {
     const cfg = await AppConfig.findOne();
-    if (cfg && cfg.isAutoSyncEnabled && cfg.googleSheetSyncUrl) {
-      const result = await playerController.syncSheetCore(cfg.googleSheetSyncUrl, true, io);
-      if (result && result.count > 0) {
-        console.log(`[Auto-Sync] Ingested ${result.count} new submissions from Google Form!`);
-        cfg.lastSyncedAt = new Date();
-        await cfg.save();
-      }
+    if (!cfg || !cfg.isAutoSyncEnabled || !cfg.googleSheetSyncUrl) return;
+
+    // Zero-Impact Safeguard: If a player is actively on stage receiving bids,
+    // postpone sync to preserve 100% server bandwidth and guarantee ZERO latency for bids!
+    const activePlayer = await Player.findOne({ status: 'in_auction' }).select('_id').lean();
+    if (activePlayer) {
+      return; // Actively bidding right now: defer sync until player is sold/paused
+    }
+
+    const result = await playerController.syncSheetCore(cfg.googleSheetSyncUrl, true, io);
+    if (result && result.count > 0) {
+      console.log(`[Auto-Sync] Ingested ${result.count} new submissions from Google Form!`);
+      cfg.lastSyncedAt = new Date();
+      await cfg.save();
     }
   } catch (err) {
     // Non-fatal background sync error
