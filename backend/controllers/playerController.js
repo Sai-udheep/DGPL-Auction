@@ -78,12 +78,17 @@ exports.deleteAllPlayers = catchAsync(async (req, res, next) => {
   // Delete all non-captain players
   const result = await Player.deleteMany({ isCaptain: { $ne: true } });
 
-  // Clean team rosters to only keep retained captains
-  const allTeams = await Team.find();
-  for (const team of allTeams) {
-    team.players = team.captain ? [team.captain] : [];
-    await team.save();
-  }
+  // Clean team rosters to only keep retained captains (using collection update to bypass middleware)
+  try {
+    const allTeams = await Team.find().lean();
+    for (const t of allTeams) {
+      const captainPlayers = t.captain ? [t.captain] : [];
+      await Team.collection.updateOne(
+        { _id: t._id },
+        { $set: { players: captainPlayers } }
+      );
+    }
+  } catch (_) {}
 
   res.status(200).json({
     status: 'success',

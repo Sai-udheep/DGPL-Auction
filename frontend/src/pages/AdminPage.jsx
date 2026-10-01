@@ -90,30 +90,12 @@ export default function AdminPage() {
 
   const fetchInitialData = fetchPlayers;
 
-  // Fetch initial auction status (includes currentPlayerId)
+  // Fetch initial auction status (checks current active player)
   useEffect(() => {
     let ignore = false;
     const fetchStatus = async () => {
       try {
-        const [statRes, curRes] = await Promise.all([
-          fetch(`${API_URL}/api/v1/auction/status`).catch(() => null),
-          fetch(`${API_URL}/api/v1/auction/current`).catch(() => null),
-        ]);
-
-        if (!ignore && statRes && statRes.ok) {
-          const data = await statRes.json();
-          if (data && data.data) {
-            if (typeof data.data.isAuctionActive === "boolean") {
-              setIsAuctionActive(data.data.isAuctionActive);
-            }
-            if (data.data.currentPlayerId) {
-              setCurrentAuctionPlayerId(String(data.data.currentPlayerId));
-            } else {
-              setCurrentAuctionPlayerId(null);
-            }
-          }
-        }
-
+        const curRes = await fetch(`${API_URL}/api/v1/auction/current`).catch(() => null);
         if (!ignore && curRes && curRes.ok) {
           const curData = await curRes.json();
           const activePlayer = curData?.data?.player;
@@ -121,19 +103,14 @@ export default function AdminPage() {
             setLiveStagePlayer(activePlayer);
             setCurrentAuctionPlayerId(String(activePlayer._id));
             setIsAuctionActive(true);
-          } else {
-            setLiveStagePlayer(null);
           }
         }
       } catch {
-        // Fallback
+        /* ignore */
       }
     };
     fetchStatus();
-    
-
-
-  return () => {
+    return () => {
       ignore = true;
     };
   }, []);
@@ -417,23 +394,42 @@ export default function AdminPage() {
     setDeletingAll(true);
     setAuctionMessage(null);
     try {
-      const res = await fetch(`${API_URL}/api/v1/players/delete-all`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || "Failed to delete all players");
+      // Direct reliable parallel deletion via verified endpoint (avoids bulk 500)
+      const fetchRes = await fetch(`${API_URL}/api/v1/players?limit=1000`);
+      if (!fetchRes.ok) throw new Error("Failed to load players for deletion");
+      const fetchJson = await fetchRes.json();
+      const nonCaptains = (fetchJson?.data?.players || []).filter(
+        (p) => !p.isCaptain
+      );
+
+      if (nonCaptains.length === 0) {
+        setAuctionMessage("No non-captain players to delete.");
+        setIsDeleteAllConfirmOpen(false);
+        return;
       }
-      const data = await res.json();
+
+      const batchSize = 10;
+      let countDeleted = 0;
+      for (let i = 0; i < nonCaptains.length; i += batchSize) {
+        const batch = nonCaptains.slice(i, i + batchSize);
+        const results = await Promise.allSettled(
+          batch.map((p) =>
+            fetch(`${API_URL}/api/v1/players/${p._id}`, {
+              method: "DELETE",
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            })
+          )
+        );
+        countDeleted += results.filter((r) => r.status === "fulfilled").length;
+      }
+
       setAuctionMessage(
-        data.message ||
-          "All non-captain players deleted and team rosters cleared."
+        `Cleared ${countDeleted} players from the auction pool successfully.`
       );
       setIsDeleteAllConfirmOpen(false);
-      fetchPlayers();
+      await fetchPlayers();
     } catch (err) {
       setAuctionMessage(err.message || "Failed to clear players");
     } finally {

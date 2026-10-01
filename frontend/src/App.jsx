@@ -176,24 +176,13 @@ function App() {
     let ignore = false;
     const loadState = async () => {
       try {
-        const [currRes, statusRes] = await Promise.all([
-          fetch(`${API_URL}/api/v1/auction/current`),
-          fetch(`${API_URL}/api/v1/auction/status`).catch(() => null),
-        ]);
-
+        const currRes = await fetch(`${API_URL}/api/v1/auction/current`);
         if (currRes.ok) {
           const currData = await currRes.json();
           const incoming = currData?.data?.player;
           if (!ignore && incoming) {
             setCurrentPlayer(incoming);
             setIsAuctionActive(true);
-          }
-        }
-
-        if (statusRes && statusRes.ok) {
-          const statusData = await statusRes.json();
-          if (!ignore && typeof statusData?.data?.isAuctionActive === "boolean") {
-            setIsAuctionActive(statusData.data.isAuctionActive);
           }
         }
       } catch {
