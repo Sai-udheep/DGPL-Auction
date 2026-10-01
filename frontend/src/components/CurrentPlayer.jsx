@@ -3,7 +3,7 @@ import { useAuth } from "../context/authContextCore";
 import { useSocket } from "../context/useSocket";
 import { formatAcademicYear } from "../utils/formatters";
 import CurrentPlayerSkeleton from "./CurrentPlayerSkeleton";
-import { Clock, Radio, Sparkles, ShieldAlert } from "lucide-react";
+import { Clock, Radio, Sparkles, ShieldAlert, User } from "lucide-react";
 
 const BidErrorListener = ({ socket }) => {
   React.useEffect(() => {
@@ -185,10 +185,155 @@ const CurrentPlayer = ({ player: livePlayer, isAuctionActive = false, teams = []
   };
 
   return (
-    <div className="glass-card max-w-md w-full overflow-hidden flex flex-col">
+    <div className="glass-card max-w-md w-full overflow-hidden flex flex-col shadow-2xl border-white/10">
       {socket && <BidErrorListener socket={socket} />}
 
-      {/* Image Preview with Aspect Ratio */}
+      {/* ======================================================== */}
+      {/* 1. MOBILE COMPACT VIEW (< sm): ZERO SCROLL, THUMB-READY  */}
+      {/* ======================================================== */}
+      <div className="sm:hidden p-3 space-y-2.5 w-full">
+        {/* Player Snapshot: Avatar + Details Side-by-Side */}
+        <div className="flex items-center gap-2.5">
+          <div className="relative w-18 h-22 rounded-2xl overflow-hidden bg-black/40 border border-white/15 shrink-0 shadow-md">
+            {image ? (
+              <img
+                src={image}
+                alt={name}
+                className="w-full h-full object-cover object-center"
+                onError={(e) => {
+                  e.target.src = `https://via.placeholder.com/150x200?text=${encodeURIComponent(name)}`;
+                }}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-white/40">
+                <User className="w-7 h-7" />
+              </div>
+            )}
+            <div className="absolute top-1 left-1 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-black/70 backdrop-blur-md text-[8px] font-black text-amber-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+              <span>LIVE</span>
+            </div>
+          </div>
+
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.2 rounded-md border ${getCategoryColor(category)}`}>
+                {category}
+              </span>
+              {year && (
+                <span className="text-[10px] font-semibold text-white/50">
+                  {formatAcademicYear(year)}
+                </span>
+              )}
+            </div>
+
+            <h2 className="text-base font-black text-white truncate tracking-wide font-brand">
+              {name}
+            </h2>
+
+            <p className="text-[10px] font-semibold text-white/40">
+              Base: <span className="text-white/80">{player.basePrice != null ? `${player.basePrice} Pts` : "-"}</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Current Bid & Holding Team Box */}
+        <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] shadow-inner space-y-1.5">
+          <div className="flex items-baseline justify-between">
+            <div>
+              <span className="text-[9px] uppercase font-bold text-white/40 block">Current Bid</span>
+              <div className="flex items-baseline gap-1 mt-0.5">
+                <span className="text-2xl font-black text-emerald-400 leading-none">
+                  {currentBid != null ? currentBid : "--"}
+                </span>
+                <span className="text-xs font-bold text-emerald-300 uppercase">Pts</span>
+              </div>
+            </div>
+
+            <div className="text-right max-w-[55%]">
+              <span className="text-[9px] uppercase font-bold text-white/40 block">Holding Team</span>
+              <span className="text-xs font-bold text-white truncate block mt-0.5">
+                {leadingTeamName || "No Bids Yet"}
+              </span>
+            </div>
+          </div>
+
+          {/* Captain Purse info */}
+          {isTeamOwner && (
+            <div className="pt-1 border-t border-white/[0.06] flex items-center justify-between text-[10px]">
+              <span className="text-white/50">Your Purse:</span>
+              <span className={`font-bold ${isOutOfBudget ? "text-rose-400" : "text-emerald-400"}`}>
+                {typeof userTeamBudget === "number" ? `${userTeamBudget.toFixed(2).replace(/\.00$/, "")} Pts` : "-"}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Big Place Bid Action for Mobile Captains */}
+        {isTeamOwner ? (
+          <div>
+            <button
+              onClick={!isLeadingTeam && !isOutOfBudget ? handleBid : undefined}
+              disabled={isLeadingTeam || isOutOfBudget}
+              className={`w-full py-3 px-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-all duration-200 shadow-xl cursor-pointer ${
+                isLeadingTeam
+                  ? "bg-white/[0.08] text-white/40 border border-white/10 cursor-not-allowed"
+                  : isOutOfBudget
+                  ? "bg-rose-500/15 text-rose-300 border border-rose-500/30 cursor-not-allowed"
+                  : "bg-gradient-to-r from-amber-400 via-orange-400 to-amber-300 text-slate-950 hover:brightness-110 active:scale-[0.98] shadow-amber-500/20"
+              }`}
+              type="button"
+            >
+              <span>
+                {isLeadingTeam
+                  ? "Holding Highest Bid"
+                  : isOutOfBudget
+                  ? "Insufficient Funds"
+                  : "Place Bid"}
+              </span>
+              {!isLeadingTeam && nextBidAmount && !isOutOfBudget && (
+                <span className="px-2 py-0.5 rounded-lg bg-black/20 text-slate-950 font-black text-xs">
+                  {nextBidAmount} Pts
+                </span>
+              )}
+            </button>
+          </div>
+        ) : (
+          <div className="p-2 rounded-xl bg-white/[0.02] border border-white/[0.05] text-center text-[10px] text-white/40">
+            Sign in as Team Captain to place bids
+          </div>
+        )}
+
+        {/* Mini Bid History (Last 2 bids, compact ticker) */}
+        {sortedBids.length > 0 && (
+          <div className="space-y-1">
+            <span className="text-[9px] uppercase font-bold text-white/40 tracking-wider block">
+              Recent Bids ({sortedBids.length})
+            </span>
+            <div className="space-y-1 max-h-14 overflow-y-auto custom-scroll">
+              {sortedBids.slice(0, 3).map((bid, index) => (
+                <div
+                  key={bid._id || bid.timestamp || index}
+                  className={`flex items-center justify-between px-2.5 py-1 rounded-lg text-[10px] font-semibold border ${
+                    index === 0
+                      ? "bg-white/[0.08] border-white/20 text-white"
+                      : "bg-white/[0.02] border-white/[0.05] text-white/60"
+                  }`}
+                >
+                  <span className="truncate max-w-[130px]">{bid.teamName || "Team"}</span>
+                  <span className="font-extrabold text-emerald-400 shrink-0">{bid.bidAmount} Pts</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ======================================================== */}
+      {/* 2. DESKTOP / TABLET VIEW (hidden sm:block): FULL HEIGHT  */}
+      {/* ======================================================== */}
+      <div className="hidden sm:block">
+        {/* Image Preview with Aspect Ratio */}
       {image && (
         <div className="aspect-[3/4] w-full overflow-hidden bg-black/40 relative border-b border-white/[0.08] group">
           <img
@@ -342,6 +487,7 @@ const CurrentPlayer = ({ player: livePlayer, isAuctionActive = false, teams = []
             </button>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

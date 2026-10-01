@@ -11,6 +11,7 @@ export default function PlayerTable({
   deletingPlayerId,
   currentAuctionPlayerId = null,
   isUnsoldPool = false,
+  isSoldPool = false,
   tableTitle = "Players",
 }) {
   const [confirmId, setConfirmId] = useState(null);
@@ -18,7 +19,7 @@ export default function PlayerTable({
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   // If unsold pool, show all. Otherwise hide sold.
-  const display = isUnsoldPool
+  const display = isUnsoldPool || isSoldPool
     ? players
     : players.filter((p) => p.status !== "sold");
 
@@ -61,6 +62,8 @@ export default function PlayerTable({
               className={`glass-card p-4 space-y-3.5 transition-all ${
                 isLive
                   ? "border-amber-500/50 bg-amber-500/[0.08] shadow-[0_0_24px_rgba(234,118,63,0.2)]"
+                  : isSoldPool
+                  ? "border-emerald-500/25 bg-emerald-500/[0.04]"
                   : isUnsoldPool
                   ? "border-rose-500/20 bg-rose-500/[0.04]"
                   : "border-white/10"
@@ -135,7 +138,17 @@ export default function PlayerTable({
 
               {/* Action Buttons */}
               <div className="flex items-center gap-2 flex-wrap">
-                {isUnsoldPool ? (
+                {isSoldPool ? (
+                  // Sold pool info
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-bold text-emerald-400 truncate">
+                      Sold to: {p.teamName || p.team?.name || "Assigned Team"}
+                    </p>
+                    <p className="text-[10px] text-white/50">
+                      Price: {p.isCaptain ? "Retained Captain" : `${p.finalBidPrice ?? 0} Pts`}
+                    </p>
+                  </div>
+                ) : isUnsoldPool ? (
                   // Unsold pool — only delete available
                   <p className="text-[10px] text-rose-300/60 flex-1">Permanently unsold</p>
                 ) : !isLive && !otherPlayerIsLive ? (
@@ -350,6 +363,10 @@ export default function PlayerTable({
                           <span className="w-1.5 h-1.5 rounded-full bg-black animate-ping" />
                           LIVE
                         </span>
+                      ) : isSoldPool ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
+                          SOLD
+                        </span>
                       ) : isUnsoldPool ? (
                         <span className="text-[10px] font-bold text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-full">
                           UNSOLD
@@ -362,7 +379,17 @@ export default function PlayerTable({
                     {/* Actions */}
                     <td className="px-5 py-3.5 text-right whitespace-nowrap">
                       <div className="inline-flex items-center justify-end gap-2">
-                        {isUnsoldPool ? (
+                        {isSoldPool ? (
+                          // Sold pool: show team & points
+                          <div className="text-right">
+                            <span className="text-xs font-bold text-emerald-400 block truncate max-w-[140px]">
+                              {p.teamName || p.team?.name || "Assigned Team"}
+                            </span>
+                            <span className="text-[10px] text-white/50">
+                              {p.isCaptain ? "Retained Captain" : `${p.finalBidPrice ?? 0} Pts`}
+                            </span>
+                          </div>
+                        ) : isUnsoldPool ? (
                           // Unsold pool: only delete
                           <span className="text-[10px] text-rose-300/50 mr-2">Permanently unsold</span>
                         ) : !isLive && !otherPlayerIsLive ? (
