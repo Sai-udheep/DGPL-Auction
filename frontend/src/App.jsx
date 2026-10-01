@@ -152,7 +152,6 @@ function App() {
 
         const handlePlayerWithdrawn = () => {
       setCurrentPlayer(null);
-      setIsAuctionActive(false);
       setRecentlySold(null);
       setRecentlyUnsold(null);
       const id = Date.now();

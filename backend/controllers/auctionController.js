@@ -223,16 +223,7 @@ exports.sellPlayer = catchAsync(async (req, res, next) => {
     playerPlain.teamName = playerPlain.team.name;
   }
 
-  // Mark auction session inactive now that player is sold
-  try {
-    await AppConfig.findOneAndUpdate(
-      {},
-      { $set: { isAuctionActive: false } },
-      { upsert: true }
-    );
-  } catch (e) {
-    console.error('[Auction] Could not update AppConfig after sell:', e);
-  }
+  // Keep auction session active between players until Admin pauses or resets
 
   if (req.io) {
     console.log(
@@ -250,7 +241,7 @@ exports.sellPlayer = catchAsync(async (req, res, next) => {
     };
     req.io.emit('server:player_sold', soldPayload);
     req.io.emit('player_sold', soldPayload);
-    req.io.emit('server:auction_status_changed', { isAuctionActive: false, currentPlayerId: null });
+    req.io.emit('server:auction_status_changed', { isAuctionActive: true, currentPlayerId: null });
   }
 
   res.status(200).json({
@@ -294,16 +285,7 @@ exports.markPlayerUnsold = catchAsync(async (req, res, next) => {
   }
   if (plain.team && plain.team.name) plain.teamName = plain.team.name;
 
-  // Mark auction inactive
-  try {
-    await AppConfig.findOneAndUpdate(
-      {},
-      { $set: { isAuctionActive: false } },
-      { upsert: true }
-    );
-  } catch (e) {
-    console.error('[Auction] Could not update AppConfig after unsold:', e);
-  }
+  // Keep auction session active between players until Admin pauses or resets
 
   if (req.io) {
     console.log(
@@ -312,7 +294,7 @@ exports.markPlayerUnsold = catchAsync(async (req, res, next) => {
     );
     req.io.emit('server:player_unsold', plain);
     req.io.emit('player_unsold', plain);
-    req.io.emit('server:auction_status_changed', { isAuctionActive: false, currentPlayerId: null });
+    req.io.emit('server:auction_status_changed', { isAuctionActive: true, currentPlayerId: null });
   }
 
   res.status(200).json({
@@ -371,7 +353,7 @@ exports.resetAuction = catchAsync(async (req, res, next) => {
   if (req.io) {
     console.log('[Auction] Emitting server:auction_reset');
     req.io.emit('server:auction_reset', { message: 'Auction has been reset' });
-    req.io.emit('server:auction_status_changed', { isAuctionActive: false, currentPlayerId: null });
+    req.io.emit('server:auction_status_changed', { isAuctionActive: true, currentPlayerId: null });
   }
 
   res.status(200).json({
@@ -399,21 +381,12 @@ exports.cancelCurrentPlayer = catchAsync(async (req, res, next) => {
   player.finalBidPrice = null;
   await player.save();
 
-  // Reset auction active session
-  try {
-    await AppConfig.findOneAndUpdate(
-      {},
-      { $set: { isAuctionActive: false } },
-      { upsert: true }
-    );
-  } catch (e) {
-    console.error('[Auction] Error updating AppConfig after withdraw:', e);
-  }
+  // Keep auction session active between players until Admin pauses or resets
 
   if (req.io) {
     console.log('[Auction] Emitting server:player_withdrawn for', player.name);
     req.io.emit('server:player_withdrawn', { playerId: player._id });
-    req.io.emit('server:auction_status_changed', { isAuctionActive: false, currentPlayerId: null });
+    req.io.emit('server:auction_status_changed', { isAuctionActive: true, currentPlayerId: null });
   }
 
   res.status(200).json({

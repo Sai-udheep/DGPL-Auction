@@ -584,7 +584,6 @@ export default function AdminPage() {
       }
       setCurrentAuctionPlayerId(null);
       setLiveStagePlayer(null);
-      setIsAuctionActive(false);
       setAuctionMessage("Player marked as unsold.");
       setPlayers((prev) =>
         prev.map((p) =>
