@@ -73,26 +73,22 @@ exports.deletePlayer = catchAsync(async (req, res, next) => {
   });
 });
 
-// DELETE ALL NON-CAPTAIN PLAYERS
+// DELETE ALL PLAYERS & RESET ROSTERS COMPLETELY (No ghost captains left behind)
 exports.deleteAllPlayers = catchAsync(async (req, res, next) => {
-  // Delete all non-captain players
-  const result = await Player.deleteMany({ isCaptain: { $ne: true } });
+  // Wipe all players completely so old dummy captains cannot linger
+  const result = await Player.deleteMany({});
 
-  // Clean team rosters to only keep retained captains (using collection update to bypass middleware)
+  // Reset all teams: 100 budget, no captain, empty roster
   try {
-    const allTeams = await Team.find().lean();
-    for (const t of allTeams) {
-      const captainPlayers = t.captain ? [t.captain] : [];
-      await Team.collection.updateOne(
-        { _id: t._id },
-        { $set: { players: captainPlayers } }
-      );
-    }
+    await Team.collection.updateMany(
+      {},
+      { $set: { budget: 100, captain: null, players: [] } }
+    );
   } catch (_) {}
 
   res.status(200).json({
     status: 'success',
-    message: `Deleted ${result.deletedCount} players. Team rosters have been reset.`,
+    message: `Deleted ${result.deletedCount} players. All team rosters and captains have been cleanly reset.`,
     deletedCount: result.deletedCount,
   });
 });
