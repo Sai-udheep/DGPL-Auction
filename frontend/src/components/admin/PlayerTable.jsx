@@ -146,7 +146,7 @@ export default function PlayerTable({
                     className={`flex-1 px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition-all focus:outline-none cursor-pointer ${
                       disabled || !onStartAuction
                         ? "bg-white/[0.04] text-white/30 cursor-not-allowed"
-                        : "bg-gradient-to-r from-amber-400 via-orange-400 to-amber-300 text-slate-950 hover:brightness-110 shadow-sm"
+                        : "bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black shadow-sm"
                     }`}
                     type="button"
                   >
@@ -373,7 +373,7 @@ export default function PlayerTable({
                             className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all focus:outline-none cursor-pointer ${
                               disabled || !onStartAuction
                                 ? "bg-white/[0.04] text-white/30 cursor-not-allowed"
-                                : "bg-gradient-to-r from-amber-400 via-orange-400 to-amber-300 text-slate-950 hover:brightness-110 shadow-sm font-extrabold"
+                                : "bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black shadow-sm font-extrabold"
                             }`}
                             type="button"
                           >

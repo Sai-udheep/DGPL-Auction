@@ -55,27 +55,27 @@ function Header() {
                 </strong>
               </div>
 
-              {/* Captain: My Team button */}
+              {/* Captain: My Team button (Sleek Neutral Glass) */}
               {isCaptain && (
                 <button
                   onClick={() => setIsMyTeamOpen(true)}
-                  className="glass-btn px-2.5 py-1 sm:px-3 sm:py-1.5 text-[10px] sm:text-xs font-bold text-amber-300 bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/35 hover:border-amber-400/60 flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap shadow-sm"
+                  className="glass-btn px-2.5 py-1 sm:px-3 sm:py-1.5 text-[10px] sm:text-xs font-semibold text-white/90 bg-white/[0.06] hover:bg-white/[0.12] border-white/10 hover:border-white/20 flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap transition"
                   type="button"
                   title="View your squad composition and remaining purse"
                 >
-                  <Shield className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <Shield className="w-3.5 h-3.5 text-white/70 shrink-0" />
                   <span>My Team</span>
                 </button>
               )}
 
-              {/* Admin / Live toggle button */}
+              {/* Admin / Live toggle button (Sleek Neutral Glass) */}
               {user?.role === "admin" && (
                 <button
                   onClick={() => navigate(isOnAdmin ? "/" : "/admin")}
-                  className="glass-btn px-2.5 py-1 sm:px-3 sm:py-1.5 text-[10px] sm:text-xs font-semibold text-white/90 bg-white/[0.08] hover:bg-white/[0.14] flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap"
+                  className="glass-btn px-2.5 py-1 sm:px-3 sm:py-1.5 text-[10px] sm:text-xs font-semibold text-white/90 bg-white/[0.06] hover:bg-white/[0.12] border-white/10 hover:border-white/20 flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap transition"
                   type="button"
                 >
-                  <LayoutDashboard className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <LayoutDashboard className="w-3.5 h-3.5 text-white/70 shrink-0" />
                   <span className="hidden xs:inline">{isOnAdmin ? "Live Auction" : "Admin Panel"}</span>
                   <span className="inline xs:hidden">{isOnAdmin ? "Live" : "Admin"}</span>
                 </button>
@@ -95,10 +95,10 @@ function Header() {
           ) : (
             <button
               onClick={() => navigate("/login")}
-              className="glass-btn px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold text-white bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border-amber-500/30 hover:border-amber-400/50 flex items-center gap-1.5 shadow-sm cursor-pointer shrink-0"
+              className="glass-btn px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold text-white/90 hover:text-white bg-white/[0.08] hover:bg-white/[0.15] border-white/15 hover:border-white/25 flex items-center gap-1.5 shadow-sm cursor-pointer shrink-0 transition"
               type="button"
             >
-              <LogIn className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <LogIn className="w-3.5 h-3.5 text-white/70 shrink-0" />
               <span>Sign In</span>
             </button>
           )}

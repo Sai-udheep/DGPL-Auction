@@ -128,7 +128,19 @@ export default function AdminPage() {
       }
     };
     fetchStatus();
-    return () => {
+    
+  // Captain updated handler
+  const handleCaptainAssigned = () => {
+    fetchInitialData();
+  };
+
+  // Start auction from Random Draw modal
+  const handleStartFromModal = (playerId) => {
+    setIsRandomDrawModalOpen(false);
+    handleStartAuction(playerId);
+  };
+
+  return () => {
       ignore = true;
     };
   }, []);
@@ -705,6 +717,19 @@ export default function AdminPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-2 sm:px-4 pt-2 pb-10 space-y-4 sm:space-y-5">
+      {/* Live Ongoing Player Spotlight Stage (Pinned at Top for Admin) */}
+      {currentAuctionPlayerId && (
+        <AdminLiveStage
+          player={
+            players.find((p) => String(p._id) === String(currentAuctionPlayerId)) ||
+            inAuctionPlayers[0]
+          }
+          onSellPlayer={handleSellPlayer}
+          onMarkUnsold={handleMarkUnsold}
+          actionLoadingId={actionLoadingId}
+        />
+      )}
+
       {/* Page Header */}
       <div className="glass-card p-4 sm:p-5 space-y-3.5">
         <div className="flex items-center gap-3">
@@ -760,80 +785,68 @@ export default function AdminPage() {
           ))}
         </div>
 
-        {/* Action Buttons Row */}
+                {/* Action Buttons Row - Color Coded By Intent */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* View Teams */}
+          {/* Group 1: Tournament & Roster Tools (Neutral Glass) */}
           <button
             onClick={() => setIsTeamsModalOpen(true)}
-            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold text-cyan-300 bg-cyan-500/15 hover:bg-cyan-500/25 border-cyan-500/35 hover:border-cyan-400/60 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-sm"
+            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-semibold text-white/90 bg-white/[0.05] hover:bg-white/[0.10] border-white/10 hover:border-white/20 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-sm transition"
             type="button"
             title="Inspect all 4 team rosters and remaining purses"
           >
-            <Shield className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+            <Shield className="w-3.5 h-3.5 text-white/70 shrink-0" />
             <span>Teams</span>
           </button>
 
-          {/* Manage Captains */}
           <button
             onClick={() => setIsCaptainsModalOpen(true)}
-            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold text-amber-300 bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/35 hover:border-amber-400/60 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-sm"
+            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-semibold text-white/90 bg-white/[0.05] hover:bg-white/[0.10] border-white/10 hover:border-white/20 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-sm transition"
             type="button"
             title="Assign captains for the 4 teams"
           >
-            <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <Crown className="w-3.5 h-3.5 text-white/70 shrink-0" />
             <span>Captains</span>
           </button>
 
-          {/* Export CSV */}
           <button
             onClick={handleExportCsv}
             disabled={exporting}
-            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/35 hover:border-emerald-400/60 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-sm"
+            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-semibold text-white/90 bg-white/[0.05] hover:bg-white/[0.10] border-white/10 hover:border-white/20 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-sm transition disabled:opacity-50"
             type="button"
             title="Export complete tournament teams and rosters as CSV"
           >
-            <Download className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <Download className="w-3.5 h-3.5 text-white/70 shrink-0" />
             <span>{exporting ? "Exporting..." : "Export CSV"}</span>
           </button>
 
-          {/* Upload CSV */}
           <button
             onClick={() => setIsUploadModalOpen(true)}
-            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/25 hover:border-cyan-500/45 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-semibold text-white/90 bg-white/[0.05] hover:bg-white/[0.10] border-white/10 hover:border-white/20 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-sm transition"
             type="button"
+            title="Upload players via CSV spreadsheet"
           >
-            <Upload className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+            <Upload className="w-3.5 h-3.5 text-white/70 shrink-0" />
             <span>Upload Players</span>
-          </button>
-
-          {/* Delete All */}
-          <button
-            onClick={() => setIsDeleteAllConfirmOpen(true)}
-            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/25 hover:border-rose-500/45 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
-            type="button"
-          >
-            <Trash2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-            <span>Clear All Players</span>
           </button>
 
           <div className="flex-1 hidden sm:block" />
 
-          {/* Auction In-Progress Banner (replaces Start when player is live) */}
+          {/* Auction In-Progress Live Pill */}
           {currentAuctionPlayerId && (
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold whitespace-nowrap">
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0" />
-              Auction in progress
+              <span>Auction in progress</span>
             </div>
           )}
 
-          {/* Pause / Resume Session */}
+          {/* Group 2: Session State Control (Emerald / Amber) */}
           <button
             onClick={handleToggleAuctionStatus}
             disabled={statusToggling}
-            className={`glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+            className={`glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-sm transition ${
               isAuctionActive
-                ? "bg-white/[0.08] hover:bg-white/[0.14] text-white border-white/15"
-                : "bg-gradient-to-r from-emerald-500/25 to-teal-500/25 text-emerald-300 border-emerald-400/40 hover:from-emerald-500/35 hover:to-teal-500/35"
+                ? "bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/30 hover:border-amber-400/50"
+                : "bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/30 hover:border-emerald-400/50"
             }`}
             type="button"
           >
@@ -850,11 +863,22 @@ export default function AdminPage() {
             )}
           </button>
 
-          {/* Reset Auction */}
+          {/* Group 3: Destructive Actions (Consistent Rose / Red) */}
+          <button
+            onClick={() => setIsDeleteAllConfirmOpen(true)}
+            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/20 hover:border-rose-500/35 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-sm transition"
+            type="button"
+            title="Clear all non-captain players"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+            <span>Clear Pool</span>
+          </button>
+
           <button
             onClick={() => setIsResetConfirmOpen(true)}
-            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/25 hover:border-rose-500/45 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+            className="glass-btn px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs font-bold text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/20 hover:border-rose-500/35 flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-sm transition"
             type="button"
+            title="Reset auction state and team budgets"
           >
             <RotateCcw className="w-3.5 h-3.5 text-rose-400 shrink-0" />
             <span>Reset Auction</span>
@@ -868,6 +892,38 @@ export default function AdminPage() {
         selectedYear={selectedYear}
         onSelectYear={setSelectedYear}
       />
+
+      {/* Random Player Draw Banner for Selected Year */}
+      {selectedYear != null && (
+        <div className="glass-card p-3 sm:p-3.5 flex flex-wrap items-center justify-between gap-3 border-white/10 bg-white/[0.02]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-white/[0.05] border border-white/10 flex items-center justify-center text-sm shrink-0">
+              🎲
+            </div>
+            <div>
+              <p className="text-xs font-bold text-white">
+                Year {selectedYear} Random Player Draw
+              </p>
+              <p className="text-[10px] text-white/40">
+                {availablePlayers.length} available player{availablePlayers.length === 1 ? "" : "s"} ready to draw
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleDrawRandomPlayer}
+            disabled={availablePlayers.length === 0 || currentAuctionPlayerId !== null}
+            className={`px-3.5 py-2 text-xs font-semibold rounded-xl flex items-center gap-2 transition cursor-pointer ${
+              availablePlayers.length === 0 || currentAuctionPlayerId !== null
+                ? "bg-white/[0.03] text-white/30 cursor-not-allowed border border-white/5"
+                : "bg-white/[0.06] hover:bg-white/[0.12] text-white border border-white/10 hover:border-white/20 shadow-sm"
+            }`}
+            type="button"
+          >
+            <span>🎲 Draw Random Player</span>
+          </button>
+        </div>
+      )}
+
 
       {selectedYear == null && (
         <div className="glass-card p-8 text-center text-white/50 text-xs">
@@ -1056,6 +1112,40 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+    
+      {/* Teams Roster Modal */}
+      <AdminTeamsModal
+        isOpen={isTeamsModalOpen}
+        onClose={() => setIsTeamsModalOpen(false)}
+        teams={teams}
+      />
+
+      {/* Captains Assignment Modal */}
+      <CaptainsModal
+        isOpen={isCaptainsModalOpen}
+        onClose={() => setIsCaptainsModalOpen(false)}
+        onCaptainsUpdated={handleCaptainAssigned}
+      />
+
+      {/* CSV Upload Modal */}
+      <CsvUploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onUploadSuccess={fetchInitialData}
+      />
+
+      {/* Random Draw Modal */}
+      <RandomDrawModal
+        isOpen={isRandomDrawModalOpen}
+        onClose={() => setIsRandomDrawModalOpen(false)}
+        player={drawnPlayer}
+        selectedYear={selectedYear}
+        remainingCount={availablePlayers.length}
+        onStartAuction={handleStartFromModal}
+        onDrawAnother={handleDrawAnother}
+        isStarting={actionLoadingId === drawnPlayer?._id}
+      />
+
     </div>
   );
 }
