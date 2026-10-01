@@ -74,6 +74,15 @@ Washington Sundar,All-Rounder,2,1.0,https://images.unsplash.com/photo-1522075469
     document.body.removeChild(link);
   };
 
+  const normalizeCategory = (cat) => {
+    if (!cat) return "All-Rounder";
+    const s = String(cat).trim().toLowerCase();
+    if (s.includes("wk") || s.includes("keep") || s.includes("wicket")) return "Wicket-Keeper";
+    if (s.includes("bat")) return "Batsman";
+    if (s.includes("bowl")) return "Bowler";
+    return "All-Rounder";
+  };
+
   const parseInput = (rawText) => {
     setError(null);
     setSuccessMsg(null);
@@ -97,7 +106,7 @@ Washington Sundar,All-Rounder,2,1.0,https://images.unsplash.com/photo-1522075469
                 : getAutoBasePrice(year);
             return {
               name: p.name || "",
-              category: p.category || p.role || "All-Rounder",
+              category: normalizeCategory(p.category || p.role),
               year,
               basePrice,
               image: p.image || p.photo || p.imageUrl || "",
@@ -144,8 +153,7 @@ Washington Sundar,All-Rounder,2,1.0,https://images.unsplash.com/photo-1522075469
       const name = cells[nameIdx];
       if (!name) continue;
 
-      let category = catIdx >= 0 ? cells[catIdx] : "All-Rounder";
-      if (!category) category = "All-Rounder";
+      let category = normalizeCategory(catIdx >= 0 ? cells[catIdx] : "All-Rounder");
 
       let year = 1;
       if (yearIdx >= 0 && cells[yearIdx]) {
@@ -206,6 +214,7 @@ Washington Sundar,All-Rounder,2,1.0,https://images.unsplash.com/photo-1522075469
     try {
       const batchSize = 5;
       let createdCount = 0;
+      let firstErrorMsg = null;
 
       for (let i = 0; i < previewData.length; i += batchSize) {
         const batch = previewData.slice(i, i + batchSize);
@@ -219,7 +228,7 @@ Washington Sundar,All-Rounder,2,1.0,https://images.unsplash.com/photo-1522075469
               },
               body: JSON.stringify({
                 name: p.name.trim(),
-                category: p.category || "All-Rounder",
+                category: normalizeCategory(p.category),
                 year: parseInt(p.year, 10) || 1,
                 basePrice: typeof p.basePrice === "number" ? p.basePrice : parseFloat(p.basePrice) || 0.5,
                 image: p.image || `https://via.placeholder.com/200x250?text=${encodeURIComponent(p.name)}`,
@@ -236,10 +245,14 @@ Washington Sundar,All-Rounder,2,1.0,https://images.unsplash.com/photo-1522075469
         );
 
         createdCount += results.filter((r) => r.status === "fulfilled").length;
+        if (!firstErrorMsg) {
+          const rejected = results.find((r) => r.status === "rejected");
+          if (rejected) firstErrorMsg = rejected.reason?.message;
+        }
       }
 
       if (createdCount === 0) {
-        throw new Error("Failed to create players. Please check that you are signed in as Admin.");
+        throw new Error(firstErrorMsg || "Failed to create players. Please check your admin login and CSV format.");
       }
 
       setSuccessMsg(`Successfully imported ${createdCount} of ${previewData.length} players!`);
