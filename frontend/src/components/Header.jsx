@@ -4,7 +4,7 @@ import { useAuth } from "../context/authContextCore";
 import { LogOut, LogIn, LayoutDashboard, Radio, Shield } from "lucide-react";
 import MyTeamModal from "./MyTeamModal";
 
-function Header() {
+function Header({ tournamentTitle = "DGPL Season 11", tournamentMode = "Official Auction" }) {
   const navigate = useNavigate();
   const { isAuthenticated, user, logout } = useAuth();
   const location = useLocation();
@@ -35,6 +35,13 @@ function Header() {
                 <span>DGPL</span>
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-400 to-amber-200">
                   AUCTION
+                </span>
+                <span className={`ml-2 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider hidden sm:inline-block border align-middle ${
+                  tournamentMode === "Mock Auction"
+                    ? "bg-amber-400/15 border-amber-400/30 text-amber-300"
+                    : "bg-cyan-500/15 border-cyan-400/30 text-cyan-300"
+                }`}>
+                  {tournamentMode}
                 </span>
               </h1>
               <p className="text-[8px] sm:text-[10px] font-semibold text-white/40 tracking-widest uppercase mt-0.5 hidden xs:block">

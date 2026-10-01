@@ -1,4 +1,4 @@
-﻿const mongoose = require('mongoose');
+const mongoose = require('mongoose');
 const Player = require('../models/playerModel');
 const Team = require('../models/teamModel');
 const AppConfig = require('../models/appConfigModel');
@@ -9,9 +9,15 @@ const AppError = require('../utils/appError');
 exports.getAuctionStatus = async (req, res, _next) => {
   let isAuctionActive = false;
   let currentPlayerId = null;
+  let tournamentTitle = 'DGPL Season 11';
+  let tournamentMode = 'Official Auction';
   try {
     const cfg = await AppConfig.findOne().lean();
-    if (cfg) isAuctionActive = !!cfg.isAuctionActive;
+    if (cfg) {
+      isAuctionActive = !!cfg.isAuctionActive;
+      if (cfg.tournamentTitle) tournamentTitle = cfg.tournamentTitle;
+      if (cfg.tournamentMode) tournamentMode = cfg.tournamentMode;
+    }
   } catch (e) {
     console.error('[Auction] AppConfig read error:', e.message);
   }
@@ -21,7 +27,7 @@ exports.getAuctionStatus = async (req, res, _next) => {
   } catch (e) {
     console.error('[Auction] Player in_auction read error:', e.message);
   }
-  return res.status(200).json({ status: 'success', data: { isAuctionActive, currentPlayerId } });
+  return res.status(200).json({ status: 'success', data: { isAuctionActive, currentPlayerId, tournamentTitle, tournamentMode } });
 };
 
 // 2. TOGGLE / SET GLOBAL AUCTION STATUS (Start/Pause Session)
@@ -371,5 +377,77 @@ exports.resetAuction = catchAsync(async (req, res, next) => {
   res.status(200).json({
     status: 'success',
     message: 'Auction reset successfully',
+  });
+});
+
+
+// 8. REVERT / WITHDRAW ACCIDENTALLY STARTED PLAYER (Return to pool safely without penalty)
+exports.cancelCurrentPlayer = catchAsync(async (req, res, next) => {
+  const { playerId } = req.body;
+  const filter = playerId ? { _id: playerId, status: 'in_auction' } : { status: 'in_auction' };
+  const player = await Player.findOne(filter);
+
+  if (!player) {
+    return next(new AppError('No player is currently on stage to withdraw', 400));
+  }
+
+  // Restore player to unsold pool safely
+  player.status = 'unsold';
+  player.markedUnsold = false;
+  player.bidHistory = [];
+  player.team = null;
+  player.finalBidPrice = null;
+  await player.save();
+
+  // Reset auction active session
+  try {
+    await AppConfig.findOneAndUpdate(
+      {},
+      { $set: { isAuctionActive: false } },
+      { upsert: true }
+    );
+  } catch (e) {
+    console.error('[Auction] Error updating AppConfig after withdraw:', e);
+  }
+
+  if (req.io) {
+    console.log('[Auction] Emitting server:player_withdrawn for', player.name);
+    req.io.emit('server:player_withdrawn', { playerId: player._id });
+    req.io.emit('server:auction_status_changed', { isAuctionActive: false, currentPlayerId: null });
+  }
+
+  res.status(200).json({
+    status: 'success',
+    message: `${player.name} has been returned to the available pool.`,
+    data: { player },
+  });
+});
+
+// 9. UPDATE TOURNAMENT NAME & MODE (e.g. DGPL Season 11 vs Mock Auction)
+exports.updateTournamentInfo = catchAsync(async (req, res, next) => {
+  const { tournamentTitle, tournamentMode } = req.body;
+  const updateData = {};
+  if (tournamentTitle != null) updateData.tournamentTitle = String(tournamentTitle).trim();
+  if (tournamentMode != null) updateData.tournamentMode = String(tournamentMode).trim();
+
+  const cfg = await AppConfig.findOneAndUpdate(
+    {},
+    { $set: updateData },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
+
+  if (req.io) {
+    req.io.emit('server:tournament_info_changed', {
+      tournamentTitle: cfg.tournamentTitle,
+      tournamentMode: cfg.tournamentMode,
+    });
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      tournamentTitle: cfg.tournamentTitle,
+      tournamentMode: cfg.tournamentMode,
+    },
   });
 });

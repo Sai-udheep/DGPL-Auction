@@ -44,6 +44,8 @@ export default function AdminPage() {
   const [statusToggling, setStatusToggling] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [tournamentTitle, setTournamentTitle] = useState("DGPL Season 11");
+  const [tournamentMode, setTournamentMode] = useState("Official Auction");
 
   // Bulk Player & CSV Modals
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -906,6 +908,32 @@ export default function AdminPage() {
               <span>Auction in progress</span>
             </div>
           )}
+
+          {/* Tournament Mode Selector (Official Auction vs Mock Auction) */}
+          <div className="flex items-center gap-1 bg-black/40 border border-white/10 p-1 rounded-xl text-xs shrink-0">
+            <button
+              onClick={() => handleUpdateTournamentMode("Official Auction")}
+              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition cursor-pointer whitespace-nowrap ${
+                tournamentMode === "Official Auction"
+                  ? "bg-cyan-500 text-slate-950 font-black shadow-md"
+                  : "text-white/40 hover:text-white"
+              }`}
+              type="button"
+            >
+              Official Auction
+            </button>
+            <button
+              onClick={() => handleUpdateTournamentMode("Mock Auction")}
+              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition cursor-pointer whitespace-nowrap ${
+                tournamentMode === "Mock Auction"
+                  ? "bg-amber-400 text-slate-950 font-black shadow-md"
+                  : "text-white/40 hover:text-white"
+              }`}
+              type="button"
+            >
+              Mock Auction
+            </button>
+          </div>
 
           {/* Group 2: Session State Control (Emerald / Amber) */}
           <button

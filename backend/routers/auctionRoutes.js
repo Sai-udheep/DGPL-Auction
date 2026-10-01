@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const authController = require('../controllers/authController');
 const auctionController = require('../controllers/auctionController');
 
@@ -41,6 +41,20 @@ router.post(
   authController.protect,
   authController.restrictTo('admin'),
   auctionController.markPlayerUnsold
+);
+
+router.post(
+  '/cancel-player',
+  authController.protect,
+  authController.restrictTo('admin'),
+  auctionController.cancelCurrentPlayer
+);
+
+router.patch(
+  '/tournament-info',
+  authController.protect,
+  authController.restrictTo('admin'),
+  auctionController.updateTournamentInfo
 );
 
 module.exports = router;

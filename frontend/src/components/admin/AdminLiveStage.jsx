@@ -9,14 +9,17 @@ import {
   Shield,
   Check,
   AlertTriangle,
+  RotateCcw,
 } from "lucide-react";
 
 export default function AdminLiveStage({
   player,
   onSellPlayer,
   onMarkUnsold,
+  onCancelPlayer,
   actionLoadingId,
 }) {
+  const [confirmWithdraw, setConfirmWithdraw] = useState(false);
   const [confirmSell, setConfirmSell] = useState(false);
   const [confirmUnsold, setConfirmUnsold] = useState(false);
 
@@ -220,12 +223,47 @@ export default function AdminLiveStage({
             </button>
           )}
 
+          {/* Withdraw / Return to Pool Button (Always Available for accidental starts) */}
+          <button
+            onClick={() => {
+              if (confirmWithdraw) {
+                onCancelPlayer && onCancelPlayer(player._id);
+                setConfirmWithdraw(false);
+              } else {
+                setConfirmWithdraw(true);
+                setConfirmSell(false);
+                setConfirmUnsold(false);
+              }
+            }}
+            disabled={isLoading || !onCancelPlayer}
+            className={`w-full py-2 px-3 rounded-xl text-[11px] font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
+              confirmWithdraw
+                ? "bg-amber-500 text-slate-950 font-black shadow-lg"
+                : "bg-white/[0.05] hover:bg-white/[0.1] text-amber-300/80 hover:text-amber-200 border border-amber-500/20"
+            }`}
+            type="button"
+            title="Accidentally clicked start? Return player to available pool without penalty"
+          >
+            {confirmWithdraw ? (
+              <>
+                <Check className="w-3.5 h-3.5" />
+                <span>✓ Confirm Withdraw to Pool</span>
+              </>
+            ) : (
+              <>
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Withdraw to Pool</span>
+              </>
+            )}
+          </button>
+
           {/* Quick reset confirmation on outside click */}
-          {(confirmSell || confirmUnsold) && (
+          {(confirmSell || confirmUnsold || confirmWithdraw) && (
             <button
               onClick={() => {
                 setConfirmSell(false);
                 setConfirmUnsold(false);
+                setConfirmWithdraw(false);
               }}
               className="text-[10px] text-white/40 hover:text-white/70 transition underline cursor-pointer"
               type="button"

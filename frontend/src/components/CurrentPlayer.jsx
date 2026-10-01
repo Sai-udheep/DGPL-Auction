@@ -17,7 +17,7 @@ const BidErrorListener = ({ socket }) => {
   return null;
 };
 
-const CurrentPlayer = ({ player: livePlayer, isAuctionActive = false, teams = [] }) => {
+const CurrentPlayer = ({ player: livePlayer, isAuctionActive = false, teams = [], tournamentTitle = "DGPL Season 11", tournamentMode = "Official Auction" }) => {
   const { isAuthenticated, user } = useAuth();
   const { socket } = useSocket() || {};
   const [loading, setLoading] = useState(!livePlayer && isAuctionActive);
@@ -49,14 +49,16 @@ const CurrentPlayer = ({ player: livePlayer, isAuctionActive = false, teams = []
         </div>
 
         <div>
-          <span className="text-[10px] font-extrabold uppercase tracking-widest px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 inline-block mb-2">
-            SESSION INACTIVE
+          <span className="text-[10px] font-extrabold uppercase tracking-widest px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 inline-block mb-2 shadow-sm">
+            {tournamentTitle} • {tournamentMode.toUpperCase()}
           </span>
           <h3 className="text-xl sm:text-2xl font-black text-white tracking-wide font-brand">
-            Auction Not In Session
+            {tournamentMode === "Mock Auction" ? "Mock Bidding Arena Standing By" : "Tournament Arena Standing By"}
           </h3>
-          <p className="text-xs text-white/55 mt-2 leading-relaxed max-w-sm mx-auto font-medium">
-            The live bidding arena is currently on hold. Tournament organizers will open the auction session shortly.
+          <p className="text-xs text-white/60 mt-2 leading-relaxed max-w-sm mx-auto font-medium">
+            {tournamentMode === "Mock Auction"
+              ? "Practice bidding session is standing by. Organizers will bring the next test player to the stage shortly."
+              : "The live bidding floor is currently standing by. Organizers will bring the next player to the stage shortly."}
           </p>
         </div>
 
@@ -82,14 +84,14 @@ const CurrentPlayer = ({ player: livePlayer, isAuctionActive = false, teams = []
         </div>
 
         <div>
-          <span className="text-[10px] font-extrabold uppercase tracking-widest px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 inline-block mb-2">
-            LIVE SESSION ACTIVE
+          <span className="text-[10px] font-extrabold uppercase tracking-widest px-3 py-1 rounded-full bg-cyan-500/15 border border-cyan-400/30 text-cyan-300 inline-block mb-2 shadow-sm">
+            {tournamentTitle} • {tournamentMode.toUpperCase()}
           </span>
           <h3 className="text-xl sm:text-2xl font-black text-white tracking-wide font-brand">
-            Waiting for Next Player
+            Awaiting Next Player to Take Stage
           </h3>
-          <p className="text-xs text-white/55 mt-2 leading-relaxed max-w-sm mx-auto font-medium">
-            The auction is live! The auctioneer is preparing the next player for the bidding stage.
+          <p className="text-xs text-white/60 mt-2 leading-relaxed max-w-sm mx-auto font-medium">
+            The bidding floor is live! The auctioneer is drawing the next player to take the stage.
           </p>
         </div>
       </div>
