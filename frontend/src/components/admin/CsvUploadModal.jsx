@@ -252,10 +252,23 @@ Rishabh Pant,Wicket-Keeper,2,1.0,https://images.unsplash.com/photo-1492562080023
           entry[headerNames[j]] = chunk[j];
         }
 
-        const nameKey = Object.keys(entry).find(
-          (k) => (k.includes("name") || k.includes("player")) && !k.includes("timestamp")
-        );
-        const name = nameKey ? entry[nameKey].trim() : "";
+        // Extract complete Full Name (prioritize explicit 'Full Name', or combine 'First Name' + 'Second/Last Name')
+        let name = "";
+        const fullNameKey = Object.keys(entry).find((k) => k.includes("full") && k.includes("name"));
+        if (fullNameKey && entry[fullNameKey]) {
+          name = entry[fullNameKey].trim();
+        } else {
+          const firstNameKey = Object.keys(entry).find((k) => k.includes("first") && k.includes("name"));
+          const lastNameKey = Object.keys(entry).find((k) => (k.includes("last") || k.includes("second") || k.includes("surname")));
+          if (firstNameKey && lastNameKey) {
+            name = `${entry[firstNameKey] || ""} ${entry[lastNameKey] || ""}`.trim();
+          } else if (firstNameKey) {
+            name = entry[firstNameKey].trim();
+          } else {
+            const generalNameKey = Object.keys(entry).find((k) => (k.includes("name") || k.includes("player")) && !k.includes("timestamp"));
+            name = generalNameKey ? entry[generalNameKey].trim() : "";
+          }
+        }
         if (!name) continue;
 
         const roleKey = Object.keys(entry).find((k) =>
@@ -305,7 +318,11 @@ Rishabh Pant,Wicket-Keeper,2,1.0,https://images.unsplash.com/photo-1492562080023
     // 3. Tab-separated values (TSV from Google Sheets copy) or Comma-separated (CSV)
     const delimiter = lines[0].includes("\t") ? "\t" : ",";
     const headers = lines[0].split(delimiter).map((h) => h.trim().toLowerCase().replace(/['"]/g, ""));
-    const nameIdx = headers.findIndex((h) => (h.includes("name") || h.includes("player")) && !h.includes("timestamp"));
+    const fullNameIdx = headers.findIndex((h) => h.includes("full") && h.includes("name"));
+    const firstNameIdx = headers.findIndex((h) => h.includes("first") && h.includes("name"));
+    const lastNameIdx = headers.findIndex((h) => (h.includes("last") || h.includes("second") || h.includes("surname")));
+    const generalNameIdx = headers.findIndex((h) => (h.includes("name") || h.includes("player")) && !h.includes("timestamp"));
+    const nameIdx = fullNameIdx !== -1 ? fullNameIdx : (firstNameIdx !== -1 ? firstNameIdx : generalNameIdx);
     const catIdx = headers.findIndex((h) => h.includes("role") || h.includes("category") || h.includes("skill") || h.includes("playing"));
     const yearIdx = headers.findIndex((h) => h.includes("year") || h.includes("batch") || h.includes("academic") || h.includes("participation"));
     const priceIdx = headers.findIndex((h) => h.includes("price") || h.includes("base") || h.includes("points"));
@@ -364,7 +381,14 @@ Rishabh Pant,Wicket-Keeper,2,1.0,https://images.unsplash.com/photo-1492562080023
         ? line.split("\t").map((c) => c.trim().replace(/^"|"$/g, ""))
         : (line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split(",")).map((c) => c.trim().replace(/^"|"$/g, ""));
 
-      const name = cells[nameIdx];
+      let name = "";
+      if (fullNameIdx !== -1 && cells[fullNameIdx]) {
+        name = cells[fullNameIdx].trim();
+      } else if (firstNameIdx !== -1 && lastNameIdx !== -1) {
+        name = `${cells[firstNameIdx] || ""} ${cells[lastNameIdx] || ""}`.trim();
+      } else if (nameIdx !== -1 && cells[nameIdx]) {
+        name = cells[nameIdx].trim();
+      }
       if (!name) continue;
 
       let category = normalizeCategory(catIdx >= 0 ? cells[catIdx] : "All-Rounder");

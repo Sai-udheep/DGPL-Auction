@@ -85,7 +85,7 @@ export default function PlayerTable({
                     </div>
                   )}
                   <div className="min-w-0">
-                    <h3 className="text-sm font-bold text-white truncate">{p.name}</h3>
+                    <h3 className="text-sm font-bold text-white break-words">{p.name}</h3>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className="uppercase text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-white/[0.08] border border-white/10 text-white/80">
                         {p.category || "All-Rounder"}
@@ -330,7 +330,7 @@ export default function PlayerTable({
                             <User className="w-4 h-4" />
                           </div>
                         )}
-                        <span className="truncate max-w-[160px]">{p.name}</span>
+                        <span className="font-semibold text-white whitespace-normal">{p.name}</span>
                       </div>
                     </td>
 
