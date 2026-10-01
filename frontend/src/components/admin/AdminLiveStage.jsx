@@ -10,6 +10,8 @@ import {
   Check,
   AlertTriangle,
   RotateCcw,
+  Megaphone,
+  Volume2,
 } from "lucide-react";
 
 export default function AdminLiveStage({
@@ -18,7 +20,9 @@ export default function AdminLiveStage({
   onMarkUnsold,
   onCancelPlayer,
   actionLoadingId,
+  socket,
 }) {
+  const [activeCall, setActiveCall] = useState(null); // null | 1 | 2 | 3
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
   const [confirmSell, setConfirmSell] = useState(false);
   const [confirmUnsold, setConfirmUnsold] = useState(false);
@@ -47,6 +51,28 @@ export default function AdminLiveStage({
       </div>
     );
   }
+
+  // Reset active call when player changes or bid history updates
+  React.useEffect(() => {
+    setActiveCall(null);
+  }, [player?._id, player?.bidHistory?.length]);
+
+  const handleMakeCall = (callNum) => {
+    setActiveCall(callNum);
+    if (socket && player) {
+      const callTexts = {
+        1: "Going Once (1st Call)",
+        2: "Going Twice (2nd Call)",
+        3: "Final Call (Going Thrice!)",
+      };
+      socket.emit("admin:auction_call", {
+        playerId: player._id,
+        playerName: player.name,
+        callNumber: callNum,
+        callText: callTexts[callNum],
+      });
+    }
+  };
 
   const hasBids =
     (Array.isArray(player.bidHistory) && player.bidHistory.length > 0) ||
@@ -152,6 +178,61 @@ export default function AdminLiveStage({
 
         {/* 3. Action Buttons (3 Cols) */}
         <div className="lg:col-span-3 flex lg:flex-col items-center justify-end gap-2 w-full">
+          {hasBids && (
+            /* 3-Call Auctioneer Sequence (1st Call, 2nd Call, Final Call) */
+            <div className="w-full space-y-1.5">
+              <div className="flex items-center justify-between text-[10px] text-white/50 px-1 font-bold">
+                <span className="flex items-center gap-1">
+                  <Megaphone className="w-3 h-3 text-amber-400" />
+                  Auction Calls:
+                </span>
+                {activeCall && (
+                  <span className="text-amber-300 font-extrabold animate-pulse">
+                    {activeCall === 1 ? "Going Once" : activeCall === 2 ? "Going Twice" : "Final Call!"}
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-1.5 w-full">
+                <button
+                  type="button"
+                  onClick={() => handleMakeCall(1)}
+                  className={`py-1.5 px-1 rounded-lg text-[10px] font-black transition cursor-pointer border ${
+                    activeCall === 1
+                      ? "bg-amber-400 text-slate-950 border-amber-300 shadow-md font-black"
+                      : "bg-white/[0.04] hover:bg-white/[0.08] text-amber-300/80 border-amber-500/20"
+                  }`}
+                  title="Announce Going Once (Beeps & vibrates captains' phones)"
+                >
+                  1st Call
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleMakeCall(2)}
+                  className={`py-1.5 px-1 rounded-lg text-[10px] font-black transition cursor-pointer border ${
+                    activeCall === 2
+                      ? "bg-orange-500 text-slate-950 border-orange-300 shadow-md font-black"
+                      : "bg-white/[0.04] hover:bg-white/[0.08] text-orange-300/80 border-orange-500/20"
+                  }`}
+                  title="Announce Going Twice (Beeps & vibrates captains' phones)"
+                >
+                  2nd Call
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleMakeCall(3)}
+                  className={`py-1.5 px-1 rounded-lg text-[10px] font-black transition cursor-pointer border ${
+                    activeCall === 3
+                      ? "bg-rose-500 text-white border-rose-300 shadow-md font-black animate-pulse"
+                      : "bg-white/[0.04] hover:bg-white/[0.08] text-rose-300/80 border-rose-500/20"
+                  }`}
+                  title="Announce Final Call (High-priority alarm on captains' phones)"
+                >
+                  Final Call
+                </button>
+              </div>
+            </div>
+          )}
+
           {hasBids ? (
             /* Sell Player Button */
             <button

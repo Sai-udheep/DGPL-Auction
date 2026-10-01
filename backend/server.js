@@ -356,6 +356,12 @@ io.on('connection', (socket) => {
       socket.emit('server:bid_error', { message: 'Bid failed' });
     }
   });
+  // Admin makes an auction call (1st, 2nd, 3rd call)
+  socket.on('admin:auction_call', (data) => {
+    console.log('[Auction Call] callNumber=%s text=%s', data?.callNumber, data?.callText);
+    io.emit('server:auction_call', data);
+  });
+
   socket.on('disconnect', () => {
     console.log('A user disconnected');
   });
